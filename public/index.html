@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pancake · Báo cáo nhân viên realtime</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1115; --card: #181b22; --card2: #1f2430; --line: #2a2f3a;
+    --txt: #e8eaf0; --mut: #8b93a7; --accent: #f6c344; --green: #36d399; --red: #f87272; --blue: #60a5fa;
+  }
+  body { background: var(--bg); color: var(--txt); font-family: 'Segoe UI', system-ui, sans-serif; padding: 16px; }
+  a { color: var(--blue); }
+
+  /* ── Setup ── */
+  .setup { max-width: 560px; margin: 6vh auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 28px; }
+  .setup h1 { font-size: 20px; margin-bottom: 4px; }
+  .setup p.sub { color: var(--mut); font-size: 13px; margin-bottom: 20px; }
+  .fld { margin-bottom: 14px; }
+  .fld label { display: block; font-size: 12px; color: var(--mut); margin-bottom: 5px; }
+  .fld input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--txt); padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+  .btn { background: var(--accent); color: #1a1300; border: none; padding: 11px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; color: var(--txt); border: 1px solid var(--line); }
+  .pagebox { max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 6px; }
+  .pagerow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  .pagerow:hover { background: var(--card2); }
+  .pagerow input { width: auto; }
+  .err { color: var(--red); font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .hint { font-size: 11px; color: var(--mut); margin-top: 3px; }
+
+  /* ── Dashboard ── */
+  .topbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .topbar h1 { font-size: 18px; }
+  .topbar .spacer { flex: 1; }
+  .topbar input[type=date] { background: var(--card); border: 1px solid var(--line); color: var(--txt); padding: 7px 10px; border-radius: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 8px var(--green); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .live { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .c { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .c .lab { font-size: 12px; color: var(--mut); margin-bottom: 6px; }
+  .c .val { font-size: 26px; font-weight: 700; }
+  .c .sub { font-size: 11px; color: var(--mut); margin-top: 4px; }
+  .c.accent .val { color: var(--accent); }
+  .c.green .val { color: var(--green); }
+  .c.blue .val { color: var(--blue); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
+  thead th { background: var(--card2); font-size: 12px; color: var(--mut); text-align: right; padding: 11px 14px; font-weight: 600; cursor: pointer; user-select: none; }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 11px 14px; font-size: 14px; text-align: right; border-top: 1px solid var(--line); }
+  tbody td:first-child { text-align: left; font-weight: 600; }
+  tbody tr:hover { background: var(--card2); }
+  .rank { color: var(--mut); font-weight: 400; margin-right: 8px; }
+  .pill { padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .pill.hi { background: rgba(54,211,153,.15); color: var(--green); }
+  .pill.mid { background: rgba(246,195,68,.15); color: var(--accent); }
+  .pill.lo { background: rgba(248,114,114,.13); color: var(--red); }
+  .totrow td { font-weight: 700; border-top: 2px solid var(--line); background: var(--card2); }
+  .warn { background: rgba(248,114,114,.12); border: 1px solid var(--red); color: #ffd7d7; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+  .muted { color: var(--mut); }
+  .hidden { display: none; }
+
+  /* ── POS section ── */
+  .sec-title { font-size: 14px; color: var(--mut); margin: 18px 0 10px; font-weight: 600; letter-spacing: .3px; }
+  .posbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 18px; }
+  .posbar .k { background: var(--card); padding: 12px 14px; }
+  .posbar .k .lab { font-size: 11px; color: var(--mut); margin-bottom: 5px; }
+  .posbar .k .v { font-size: 17px; font-weight: 700; }
+  .posbar .k .d { font-size: 11px; margin-top: 3px; }
+  .up { color: var(--green); } .down { color: var(--red); }
+  .chartwrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+  .charttitle { font-size: 12px; color: var(--mut); margin-bottom: 12px; }
+  .chart { display: flex; align-items: flex-end; gap: 3px; height: 140px; }
+  .chart .bar { flex: 1; background: linear-gradient(180deg, var(--blue), rgba(96,165,250,.25)); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; transition: height .3s; }
+  .chart .bar:hover { filter: brightness(1.3); }
+  .chart .bar .tip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #000; color: #fff; font-size: 11px; padding: 3px 6px; border-radius: 4px; white-space: nowrap; margin-bottom: 4px; }
+  .chart .bar:hover .tip { display: block; }
+  .chart .axis { display: flex; }
+  .chartx { display: flex; gap: 3px; margin-top: 4px; }
+  .chartx span { flex: 1; text-align: center; font-size: 9px; color: var(--mut); }
+
+  /* ── breakdown panels ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* ── tab chuyển view (POS+Nhóm ↔ Thống kê chi tiết) ── */
+  .tabs { display: flex; gap: 8px; margin: 4px 0 18px; flex-wrap: wrap; }
+  .tab { background: var(--card); color: var(--mut); border: 1px solid var(--line);
+    padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
+  .tab:hover { color: var(--txt); }
+  .tab.active { background: var(--accent); color: #1a1300; border-color: var(--accent); }
+  .view { animation: fade .18s ease; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ── dashboard con theo nhóm sale ── */
+  .teamgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px,1fr)); gap: 14px; margin-bottom: 8px; }
+  .teamblock { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; }
+  .teamblock .thead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .teamblock .tname { font-weight: 700; font-size: 15px; }
+  .teamblock .tname .dot2 { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px; vertical-align:middle; }
+  .teamblock .tsub { font-size: 11px; color: var(--mut); }
+  .teamblock .posbar { margin-bottom: 12px; }
+  .teamblock table { font-size: 12px; }
+  .teamblock th, .teamblock td { padding: 6px 8px; }
+  .teamblock .more { font-size: 11px; color: var(--mut); margin-top: 6px; }
+
+  /* ── date range picker ── */
+  .dater { display: flex; align-items: center; gap: 6px; }
+  .dater .sep { color: var(--mut); }
+  .dater .quick { display: flex; gap: 4px; margin-left: 4px; }
+  .btn.sm { padding: 6px 10px; font-size: 12px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; }
+  .panel h3 { font-size: 13px; margin-bottom: 10px; color: var(--txt); }
+  .panel table { background: transparent; }
+  .panel thead th { background: transparent; padding: 7px 8px; font-size: 11px; border-bottom: 1px solid var(--line); cursor: default; }
+  .panel tbody td { padding: 7px 8px; font-size: 12.5px; border-top: 1px solid var(--line); }
+  .panel tbody tr:hover { background: var(--card2); }
+  .chg { font-size: 10px; margin-left: 5px; }
+  .pname { display: flex; flex-direction: column; }
+  .pname small { color: var(--mut); font-size: 10px; font-weight: 400; }
+</style>
+</head>
+<body>
+
+<!-- ─── SETUP ─── -->
+<div id="setup" class="setup">
+  <h1>🥞 Kết nối Pancake</h1>
+  <p class="sub">Token chỉ lưu trên máy bạn (LocalStorage) và gửi tới proxy nội bộ — không gửi đi đâu khác.</p>
+
+  <div class="fld">
+    <label>Chat access token <span class="muted">(pancake.vn)</span></label>
+    <input id="i-chat" type="password" placeholder="access_token của pancake.vn">
+  </div>
+  <div class="fld">
+    <label>POS access token <span class="muted">(pos.pancake.vn — tùy chọn, để đồng bộ đơn 100%)</span></label>
+    <input id="i-pos" type="password" placeholder="access_token của pos.pancake.vn">
+  </div>
+  <div class="fld">
+    <label>Shop ID <span class="muted">(POS)</span></label>
+    <input id="i-shop" type="text" placeholder="vd: 230277434">
+  </div>
+
+  <button class="btn ghost" id="b-loadpages">Tải danh sách Page</button>
+  <div class="err" id="setup-err"></div>
+
+  <div id="pages-wrap" class="hidden">
+    <div class="fld" style="margin-top:14px;">
+      <label>Chọn các Page cần theo dõi</label>
+      <div class="pagebox" id="pagebox"></div>
+      <div class="hint">Tick đúng những page bạn muốn (vd 7 page). Tổng số liệu sẽ cộng từ các page này.</div>
+    </div>
+    <button class="btn" id="b-start">Bắt đầu theo dõi →</button>
+  </div>
+</div>
+
+<!-- ─── DASHBOARD ─── -->
+<div id="dash" class="hidden">
+  <div class="topbar">
+    <h1>📊 Báo cáo nhân viên</h1>
+    <span class="live"><span class="dot"></span><span id="live-txt">realtime</span></span>
+    <div class="spacer"></div>
+    <div class="dater">
+      <input type="date" id="d-date">
+      <span class="sep">→</span>
+      <input type="date" id="d-date-to">
+      <span class="quick">
+        <button class="btn ghost sm" data-range="today">Hôm nay</button>
+        <button class="btn ghost sm" data-range="yesterday">Hôm qua</button>
+        <button class="btn ghost sm" data-range="7d">7 ngày</button>
+        <button class="btn ghost sm" data-range="month">Tháng này</button>
+      </span>
+    </div>
+    <button class="btn ghost" id="b-reconf">Cấu hình</button>
+  </div>
+
+  <div id="poswarn" class="warn hidden">⚠️ Chưa kết nối POS — số đơn đang lấy tạm từ thống kê chat. Nhập POS token + Shop ID để đồng bộ đơn chính xác 100%.</div>
+
+  <!-- Tab chuyển giữa 2 view -->
+  <div class="tabs" id="view-tabs">
+    <button class="tab" data-view="chat">👥 Thống kê chi tiết · Nhân viên</button>
+    <button class="tab active" data-view="pos">🛒 POS · Tổng quan &amp; 🧩 Dashboard theo nhóm sale</button>
+  </div>
+
+  <!-- VIEW A: POS Tổng quan + Dashboard theo nhóm sale -->
+  <div id="view-pos" class="view">
+
+  <!-- Dashboard con theo nhóm sale (CSKH · Live · Tư vấn) -->
+  <div id="teams-section" class="hidden">
+    <h2 class="sec-title" style="margin-top:0">🧩 Dashboard theo nhóm sale</h2>
+    <div class="teamgrid" id="teamgrid"></div>
+  </div>
+
+  <!-- POS Tổng quan (phần riêng, khớp pos.pancake.vn) -->
+  <div id="pos-section" class="hidden">
+    <h2 class="sec-title" style="margin-top:0">🛒 POS · Tổng quan <span class="muted" id="pos-shop"></span></h2>
+    <div class="cards" id="pos-top"></div>
+    <div class="posbar" id="pos-kpi"></div>
+    <div class="chartwrap">
+      <div class="charttitle" id="pos-charttitle">Doanh thu theo giờ</div>
+      <div class="chart" id="pos-chart"></div>
+      <div class="chartx" id="pos-chartx"></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>Nguồn đơn</h3>
+      <table><thead><tr>
+        <th style="text-align:left">Nguồn</th><th>Doanh thu</th><th>Lợi nhuận</th>
+        <th>Doanh số</th><th>Chiết khấu</th><th>Đơn chốt</th><th>SL bán</th><th>GTTB</th>
+      </tr></thead><tbody id="pos-source"></tbody></table>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>Sản phẩm</h3>
+        <table><thead><tr>
+          <th style="text-align:left">Sản phẩm</th><th>Doanh thu</th><th>SL hoàn</th><th>SL bán</th><th>Đơn chốt</th>
+        </tr></thead><tbody id="pos-product"></tbody></table>
+      </div>
+      <div class="panel">
+        <h3>Nhân viên (POS)</h3>
+        <table><thead><tr>
+          <th style="text-align:left">Nhân viên</th><th>Doanh thu</th><th>Doanh số</th>
+          <th>Chiết khấu</th><th>Đơn chốt</th><th>Tỷ lệ chốt</th><th>GTTB</th>
+        </tr></thead><tbody id="pos-staff"></tbody></table>
+      </div>
+    </div>
+  </div>
+  <!-- /POS Tổng quan -->
+  </div>
+  <!-- /VIEW A -->
+
+  <!-- VIEW B: Thống kê chi tiết · Nhân viên (chat) -->
+  <div id="view-chat" class="view hidden">
+  <h2 class="sec-title" style="margin-top:0">💬 Tương tác (chat)</h2>
+  <div class="cards" id="cards"></div>
+
+  <h2 class="sec-title">👥 Thống kê chi tiết · Nhân viên</h2>
+  <table>
+    <thead>
+      <tr>
+        <th data-k="name">Nhân viên</th>
+        <th data-k="privateReply">T.nhắn từ b.luận</th>
+        <th data-k="comment">Bình luận</th>
+        <th data-k="commentSession">Phiên tr.lời b.luận</th>
+        <th data-k="inbox">Tin nhắn</th>
+        <th data-k="inboxSession">Phiên t.lời t.nhắn</th>
+        <th data-k="avgResponse">Thời gian ph.hồi TB</th>
+        <th data-k="phone">SĐT mang về</th>
+        <th data-k="orders">Số đơn chốt</th>
+        <th data-k="share">Tỉ lệ</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <p class="hint" id="foot" style="margin-top:10px;"></p>
+  </div>
+  <!-- /VIEW B -->
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const CFG_KEY = 'pck_cfg_v2';
+let S = { chatToken:'', posToken:'', shopId:'', pageIds:[], pages:[], date:'', dateTo:'', sort:'inbox', desc:true, timer:null, last:null };
+
+function todayVN() {
+  return new Date(Date.now() + 7*3600*1000).toISOString().slice(0,10);
+}
+function fmt(n) { return (n||0).toLocaleString('vi-VN'); }
+function pct(n) { return (n||0).toFixed(2) + '%'; }
+function money(n) { return fmt(Math.round(n||0)) + 'đ'; }
+function moneyShort(n) {
+  n = n||0;
+  if (n >= 1e9) return (n/1e9).toFixed(1).replace('.0','') + ' tỷ';
+  if (n >= 1e6) return (n/1e6).toFixed(1).replace('.0','') + ' tr';
+  if (n >= 1e3) return Math.round(n/1e3) + 'k';
+  return fmt(n);
+}
+function fmtTime(sec) {
+  sec = Math.round(sec||0);
+  if (sec <= 0) return '—';
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  if (h) return `${h}h ${m}m ${s}s`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ─── Setup ───
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); } catch { return {}; }
+}
+function saveCfg() {
+  localStorage.setItem(CFG_KEY, JSON.stringify({
+    chatToken:S.chatToken, posToken:S.posToken, shopId:S.shopId, pageIds:S.pageIds, pages:S.pages
+  }));
+}
+
+async function loadPages() {
+  const err = $('#setup-err'); err.textContent = '';
+  S.chatToken = $('#i-chat').value.trim();
+  S.posToken = $('#i-pos').value.trim();
+  S.shopId = $('#i-shop').value.trim();
+  if (!S.chatToken) { err.textContent = 'Nhập Chat access token trước.'; return; }
+  $('#b-loadpages').textContent = 'Đang tải…';
+  try {
+    const r = await fetch('/api/pages', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ chatToken: S.chatToken }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Lỗi tải page');
+    S.pages = j.pages || [];
+    renderPagebox();
+    $('#pages-wrap').classList.remove('hidden');
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    $('#b-loadpages').textContent = 'Tải danh sách Page';
+  }
+}
+
+function renderPagebox() {
+  const box = $('#pagebox'); box.innerHTML = '';
+  for (const p of S.pages) {
+    const row = document.createElement('label');
+    row.className = 'pagerow';
+    const checked = S.pageIds.includes(p.id) ? 'checked' : '';
+    row.innerHTML = `<input type="checkbox" value="${p.id}" ${checked}> <span>${p.name}</span> <span class="muted" style="margin-left:auto;font-size:11px">${p.platform||''}</span>`;
+    box.appendChild(row);
+  }
+}
+
+function startTracking() {
+  const checks = [...document.querySelectorAll('#pagebox input:checked')].map(c => c.value);
+  if (checks.length === 0) { $('#setup-err').textContent = 'Chọn ít nhất 1 page.'; return; }
+  S.pageIds = checks;
+  saveCfg();
+  enterDash();
+}
+
+// ─── Dashboard ───
+function enterDash() {
+  $('#setup').classList.add('hidden');
+  $('#dash').classList.remove('hidden');
+  S.date = S.date || todayVN();
+  S.dateTo = S.dateTo || S.date;
+  $('#d-date').value = S.date;
+  $('#d-date-to').value = S.dateTo;
+  switchView(localStorage.getItem('pck_view') || 'pos');
+  refresh();
+  if (S.timer) clearInterval(S.timer);
+  S.timer = setInterval(refresh, 30000); // realtime: 30s
+}
+
+async function refresh() {
+  $('#live-txt').textContent = 'đang cập nhật…';
+  try {
+    const r = await fetch('/api/metrics', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ chatToken:S.chatToken, posToken:S.posToken, shopId:S.shopId, pageIds:S.pageIds, date:S.date, dateTo:S.dateTo }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Lỗi');
+    S.last = j;
+    render(j);
+    $('#live-txt').textContent = 'cập nhật ' + new Date().toLocaleTimeString('vi-VN');
+  } catch (e) {
+    $('#live-txt').textContent = '⚠️ ' + e.message;
+  }
+}
+
+function renderPos(p) {
+  const sec = $('#pos-section');
+  if (!p) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  $('#pos-shop').textContent = S.shopId ? `· shop ${S.shopId}` : '';
+  $('#pos-charttitle').textContent = (S.date === S.dateTo)
+    ? 'Doanh thu theo giờ hôm nay' : 'Doanh thu theo giờ (gộp khoảng)';
+
+  const inv = p.inventory || {};
+  $('#pos-top').innerHTML = `
+    <div class="c green"><div class="lab">Tổng hàng chốt</div><div class="val">${money(p.closedAmount)}</div>
+      <div class="sub">Số lượng ${fmt(p.closedQty)}</div></div>
+    <div class="c"><div class="lab">Tổng hàng hoàn</div><div class="val">${money(p.returnedAmount)}</div>
+      <div class="sub">Số lượng ${fmt(p.returnedQty)}</div></div>
+    <div class="c blue"><div class="lab">Doanh thu</div><div class="val">${money(p.doanhThu)}</div>
+      <div class="sub">Đơn chốt ${fmt(p.orderCount)}</div></div>
+    <div class="c accent"><div class="lab">Lợi nhuận (${pct(p.loiNhuanPct)})</div><div class="val">${money(p.loiNhuan)}</div>
+      <div class="sub">LNTB ${money(p.lntb)}/đơn</div></div>
+    <div class="c"><div class="lab">Có thể bán</div><div class="val">${fmt(inv.quantity)}</div>
+      <div class="sub">Giá bán ${moneyShort(inv.sellPrice)}</div></div>
+  `;
+
+  $('#pos-kpi').innerHTML = `
+    <div class="k"><div class="lab">Doanh số</div><div class="v">${money(p.doanhSo)}</div></div>
+    <div class="k"><div class="lab">Doanh thu</div><div class="v">${money(p.doanhThu)}</div></div>
+    <div class="k"><div class="lab">Lợi nhuận (${pct(p.loiNhuanPct)})</div><div class="v">${money(p.loiNhuan)}</div></div>
+    <div class="k"><div class="lab">Đơn chốt</div><div class="v">${fmt(p.orderCount)}</div></div>
+    <div class="k"><div class="lab">GTTB</div><div class="v">${money(p.gttb)}</div></div>
+    <div class="k"><div class="lab">SL sản phẩm</div><div class="v">${fmt(p.closedQty)}</div></div>
+    <div class="k"><div class="lab">SL SPTB</div><div class="v">${(p.slsptb||0).toFixed(2)}</div></div>
+    <div class="k"><div class="lab">LNTB</div><div class="v">${money(p.lntb)}</div></div>
+  `;
+
+  const h = p.hourly || [];
+  const max = Math.max(1, ...h);
+  $('#pos-chart').innerHTML = h.map((v,i) =>
+    `<div class="bar" style="height:${(v/max*100).toFixed(1)}%"><span class="tip">${i}h · ${money(v)}</span></div>`
+  ).join('');
+  $('#pos-chartx').innerHTML = h.map((_,i)=> `<span>${i%2===0 ? i+'h' : ''}</span>`).join('');
+}
+
+// ↑/↓ % change vs 7 days prior
+function arrow(cur, prev) {
+  if (prev == null || prev === 0) return cur > 0 ? ' <span class="chg up">↑</span>' : '';
+  const p = (cur - prev) / prev * 100;
+  if (Math.abs(p) < 0.005) return '';
+  const cls = p >= 0 ? 'up' : 'down';
+  const sym = p >= 0 ? '↑' : '↓';
+  return ` <span class="chg ${cls}">${sym}${Math.abs(p).toFixed(2)}%</span>`;
+}
+
+function platformOf(account) {
+  if (account == null || account === 'null') return { plat: 'Chưa có nguồn', name: '' };
+  const acc = String(account);
+  const pg = (S.pages || []).find(p => p.id === acc
+    || p.id.replace(/^[a-z]+_/, '') === acc || p.id.endsWith(acc));
+  if (pg) {
+    const pl = (pg.platform || '').toLowerCase();
+    const plat = pl.includes('zalo') ? 'Zalo' : pl.includes('insta') ? 'Instagram'
+      : pl.includes('shop') ? 'Shopee' : pl.includes('tiktok') ? 'TikTok' : 'Facebook';
+    return { plat, name: pg.name };
+  }
+  if (/^pzl_|^zl_/.test(acc)) return { plat: 'Zalo', name: acc };
+  if (/^igo_/.test(acc)) return { plat: 'Instagram', name: acc };
+  if (/^spo_/.test(acc)) return { plat: 'Shopee', name: acc };
+  return { plat: 'Facebook', name: acc };
+}
+
+function renderBreakdowns(b) {
+  if (!b) { $('#pos-source').innerHTML = $('#pos-product').innerHTML = $('#pos-staff').innerHTML = ''; return; }
+
+  // Nguồn đơn — group by platform, sum metrics (and prev for arrows)
+  const groups = new Map();
+  for (const r of (b.source || [])) {
+    const { plat } = platformOf(r.key);
+    const g = groups.get(plat) || { plat, doanhThu: 0, loiNhuan: 0, doanhSo: 0,
+      chietKhau: 0, donChot: 0, slBan: 0, p: { doanhThu: 0, doanhSo: 0, donChot: 0 } };
+    g.doanhThu += r.doanhThu; g.loiNhuan += r.loiNhuan; g.doanhSo += r.doanhSo;
+    g.chietKhau += r.chietKhau; g.donChot += r.donChot; g.slBan += r.slBan;
+    g.p.doanhThu += r.prev.doanhThu; g.p.doanhSo += r.prev.doanhSo; g.p.donChot += r.prev.donChot;
+    groups.set(plat, g);
+  }
+  const src = [...groups.values()].sort((a, b2) => b2.doanhThu - a.doanhThu);
+  $('#pos-source').innerHTML = src.map(g => `
+    <tr><td style="text-align:left">${g.plat}</td>
+    <td>${money(g.doanhThu)}${arrow(g.doanhThu, g.p.doanhThu)}</td>
+    <td>${money(g.loiNhuan)}</td>
+    <td>${money(g.doanhSo)}${arrow(g.doanhSo, g.p.doanhSo)}</td>
+    <td>${money(g.chietKhau)}</td>
+    <td>${fmt(g.donChot)}${arrow(g.donChot, g.p.donChot)}</td>
+    <td>${fmt(g.slBan)}</td>
+    <td>${money(g.donChot > 0 ? g.doanhThu / g.donChot : 0)}</td></tr>`).join('');
+
+  // Sản phẩm — top 15 by revenue
+  $('#pos-product').innerHTML = (b.product || []).slice(0, 15).map(r => `
+    <tr><td style="text-align:left"><div class="pname">${r.name}${r.code ? `<small>${r.code}</small>` : ''}</div></td>
+    <td>${money(r.doanhThu)}${arrow(r.doanhThu, r.prev.doanhThu)}</td>
+    <td>${fmt(r.returnedQty)}</td>
+    <td>${fmt(r.slBan)}${arrow(r.slBan, r.prev.slBan)}</td>
+    <td>${fmt(r.donChot)}</td></tr>`).join('');
+
+  // Nhân viên (POS) — by revenue
+  $('#pos-staff').innerHTML = (b.staff || []).map(r => `
+    <tr><td style="text-align:left">${r.name}</td>
+    <td>${money(r.doanhThu)}${arrow(r.doanhThu, r.prev.doanhThu)}</td>
+    <td>${money(r.doanhSo)}</td>
+    <td>${money(r.chietKhau)}</td>
+    <td>${fmt(r.donChot)}${arrow(r.donChot, r.prev.donChot)}</td>
+    <td>${pct(r.tyLeChot)}</td>
+    <td>${money(r.gttb)}</td></tr>`).join('');
+}
+
+// ─── Dashboard con theo nhóm sale (CSKH / Live / Tư vấn) ───
+const TEAM_DEFS = [
+  ['CSKH', '#f87272', ['Nguyễn Thị Phong Lan','Xuân Mai','Minh Chau','Phương Trịnh','Thuý Hằng',
+    'Pham Nguyen Mai Chi','nguyen','Hồng Hồng','Pu Phạm','Nguyễn Mi']],
+  ['Live', '#36d399', ['Nguyễn Minh Thu','Nhã Yến','My Trịnh','Khánh Duyên','Lê Thị Kim Ngân']],
+  ['Tư vấn', '#f6c344', ['Phạm Quỳnh Anh','Dii Dii','Lê Phương','Hoàng Thanh Thủy','Bùi Phương Thảo Mi',
+    'Phan Yến Thư','Bùi Hịu','Chi Thái','Thùy Dương','Mei Mei','Ngọ Thu','Tuyet Nguyen',
+    'Phạm Ngọc Phương Quỳnh','Ánh Nguyệt','Huỳnh Như','Linh Nguyen','Bùi Thanhh Lamm',
+    'Võ Thị Mỹ Diệu','Đào Ngọc An Tuệ','Le Ngoc Truc Ly','Duyênn Kỳ','Thu My','Minh Thu',
+    'Khánh Linn','Huỳnh My']],
+];
+const TEAM_ORDER = ['CSKH','Live','Tư vấn','Khác'];
+const TEAM_COLOR = { 'CSKH':'#f87272','Live':'#36d399','Tư vấn':'#f6c344','Khác':'#7c8499' };
+function normName(s) {
+  return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/đ/g,'d').replace(/\s+/g,' ').trim();
+}
+const NAME2TEAM = (() => {
+  const m = new Map();
+  for (const [team,,names] of TEAM_DEFS) for (const n of names) m.set(normName(n), team);
+  return m;
+})();
+const TEAM_COUNT = Object.fromEntries(TEAM_DEFS.map(([t,,n]) => [t, n.length]));
+// Cả 3 nhóm đều là danh sách cố định theo cấu hình Pancake; ai chưa gán nhóm → "Khác".
+function teamOf(name) { return NAME2TEAM.get(normName(name)) || 'Khác'; }
+
+function buildTeams(j) {
+  const T = {};
+  for (const t of TEAM_ORDER) T[t] = { team:t, doanhThu:0, doanhSo:0, loiNhuan:0, chietKhau:0,
+    donChot:0, slBan:0, totalOrder:0, returnedQty:0, pDoanhThu:0, pLoiNhuan:0, pDonChot:0,
+    tuongTac:0, sdt:0, members:new Map() };
+  const mem = (tb, name) => {
+    const k = normName(name);
+    let m = tb.members.get(k);
+    if (!m) { m = { name, doanhThu:0, donChot:0, totalOrder:0, loiNhuan:0, tuongTac:0, sdt:0 }; tb.members.set(k, m); }
+    return m;
+  };
+  // POS metrics (nguồn chính xác cho doanh thu / đơn)
+  for (const r of ((j.posBreakdowns && j.posBreakdowns.staff) || [])) {
+    const tb = T[teamOf(r.name)], m = mem(tb, r.name);
+    tb.doanhThu += r.doanhThu; tb.doanhSo += r.doanhSo; tb.loiNhuan += r.loiNhuan;
+    tb.chietKhau += r.chietKhau; tb.donChot += r.donChot; tb.slBan += r.slBan;
+    tb.totalOrder += r.totalOrder; tb.returnedQty += r.returnedQty || 0;
+    tb.pDoanhThu += (r.prev && r.prev.doanhThu) || 0;
+    tb.pLoiNhuan += (r.prev && r.prev.loiNhuan) || 0;
+    tb.pDonChot += (r.prev && r.prev.donChot) || 0;
+    m.doanhThu += r.doanhThu; m.donChot += r.donChot; m.totalOrder += r.totalOrder; m.loiNhuan += r.loiNhuan;
+  }
+  // Tương tác (chat)
+  for (const s of (j.staff || [])) { const tb = T[teamOf(s.name)]; tb.tuongTac += s.total||0; mem(tb, s.name).tuongTac += s.total||0; }
+  // SĐT mang về (chat detail)
+  for (const d of (j.staffDetail || [])) { const tb = T[teamOf(d.name)]; tb.sdt += d.phone||0; mem(tb, d.name).sdt += d.phone||0; }
+  return TEAM_ORDER.map(t => T[t]);
+}
+
+function kpi(lab, val, chg) { return `<div class="k"><div class="lab">${lab}</div><div class="v">${val}${chg||''}</div></div>`; }
+
+function renderTeams(j) {
+  const sec = $('#teams-section'), grid = $('#teamgrid');
+  const teams = buildTeams(j);
+  const any = teams.some(t => t.donChot || t.doanhThu || t.tuongTac);
+  if (!any) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+
+  grid.innerHTML = teams.map(t => {
+    // Nhóm "Khác" (nhân viên chưa gán nhóm) không hiển thị
+    if (t.team === 'Khác') return '';
+    const gttb = t.donChot > 0 ? t.doanhThu / t.donChot : 0;
+    const tyLe = t.totalOrder > 0 ? (t.donChot / t.totalOrder) * 100 : 0;
+    const lnPct = t.doanhThu > 0 ? (t.loiNhuan / t.doanhThu) * 100 : 0;
+    const total = Math.max(TEAM_COUNT[t.team] || 0, t.members.size);
+    const active = [...t.members.values()].filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt).length;
+
+    const mems = [...t.members.values()]
+      .filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt)
+      .sort((a,b) => b.doanhThu - a.doanhThu || b.donChot - a.donChot);
+    const shown = mems.slice(0, 10);
+    const rows = shown.map(m => `
+      <tr><td style="text-align:left">${m.name}</td>
+      <td>${money(m.doanhThu)}</td>
+      <td>${fmt(m.donChot)}</td>
+      <td>${pct(m.totalOrder > 0 ? (m.donChot/m.totalOrder)*100 : 0)}</td>
+      <td>${fmt(m.tuongTac)}</td>
+      <td>${fmt(m.sdt)}</td></tr>`).join('') || `<tr><td colspan="6" class="muted" style="text-align:center">— chưa có số liệu —</td></tr>`;
+
+    return `<div class="teamblock">
+      <div class="thead">
+        <span class="tname"><span class="dot2" style="background:${TEAM_COLOR[t.team]}"></span>Nhóm ${t.team}</span>
+        <span class="tsub">${active}/${total} NV có số</span>
+      </div>
+      <div class="posbar">
+        ${kpi('Doanh thu', money(t.doanhThu), arrow(t.doanhThu, t.pDoanhThu))}
+        ${kpi('Lợi nhuận', money(t.loiNhuan)+` <span class="muted">(${pct(lnPct)})</span>`, arrow(t.loiNhuan, t.pLoiNhuan))}
+        ${kpi('Đơn chốt', fmt(t.donChot), arrow(t.donChot, t.pDonChot))}
+        ${kpi('Tỉ lệ chốt', pct(tyLe))}
+        ${kpi('GTTB', money(gttb))}
+        ${kpi('Tương tác', fmt(t.tuongTac))}
+        ${kpi('SĐT mang về', fmt(t.sdt))}
+        ${kpi('SL bán', fmt(t.slBan))}
+      </div>
+      <table><thead><tr>
+        <th style="text-align:left">Nhân viên</th><th>Doanh thu</th><th>Đơn</th>
+        <th>Tỉ lệ chốt</th><th>Tương tác</th><th>SĐT</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      ${mems.length > shown.length ? `<div class="more">… và ${mems.length - shown.length} NV khác</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function render(j) {
+  const s = j.summary;
+  renderPos(j.posOverview);
+  renderBreakdowns(j.posBreakdowns);
+  renderTeams(j);
+  $('#poswarn').classList.toggle('hidden', !!s.posOk);
+
+  $('#cards').innerHTML = `
+    <div class="c accent"><div class="lab">Tổng tương tác</div><div class="val">${fmt(s.totalInteractions)}</div>
+      <div class="sub">Tin nhắn ${fmt(s.totalInbox)} · Bình luận ${fmt(s.totalComment)}</div></div>
+    <div class="c"><div class="lab">TT khách mới / cũ</div><div class="val">${fmt(s.newCustTotal)}<span class="muted" style="font-size:16px"> / ${fmt(s.oldCustTotal)}</span></div></div>
+    <div class="c blue"><div class="lab">Hội thoại mới</div><div class="val">${fmt(s.newConvTotal)}</div></div>
+    <div class="c green"><div class="lab">Tổng đơn ${s.posOk?'POS':'(chat)'}</div><div class="val">${fmt(s.orderTotal)}</div>
+      <div class="sub">KH mới ${fmt(s.newOrderTotal)} · KH cũ ${fmt(s.oldOrderTotal)}</div></div>
+    <div class="c"><div class="lab">Tỉ lệ CĐ TB</div><div class="val">${pct(s.convAvg)}</div>
+      <div class="sub">Mới ${pct(s.convNew)} · Cũ ${pct(s.convOld)}</div></div>
+    <div class="c"><div class="lab">Nhân viên</div><div class="val">${fmt(s.staffCount)}</div></div>
+  `;
+
+  const data = j.staffDetail || [];
+  const rows = [...data].sort((a,b) => {
+    const av=a[S.sort], bv=b[S.sort];
+    if (typeof av === 'string') return S.desc ? bv.localeCompare(av) : av.localeCompare(bv);
+    return S.desc ? bv-av : av-bv;
+  });
+
+  const tb = $('#tbody'); tb.innerHTML = '';
+  rows.forEach((x, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="rank">${i+1}</span>${x.name}</td>
+      <td>${fmt(x.privateReply)}</td>
+      <td>${fmt(x.comment)}</td>
+      <td>${fmt(x.commentSession)}</td>
+      <td>${fmt(x.inbox)}</td>
+      <td>${fmt(x.inboxSession)}</td>
+      <td>${fmtTime(x.avgResponse)}</td>
+      <td>${fmt(x.phone)}</td>
+      <td><b>${fmt(x.orders)}</b></td>
+      <td><span class="muted">${pct(x.share)}</span></td>`;
+    tb.appendChild(tr);
+  });
+
+  // total row
+  const t = data.reduce((a,x)=>({
+    privateReply:a.privateReply+x.privateReply, comment:a.comment+x.comment,
+    commentSession:a.commentSession+x.commentSession, inbox:a.inbox+x.inbox,
+    inboxSession:a.inboxSession+x.inboxSession, phone:a.phone+x.phone, orders:a.orders+x.orders
+  }), {privateReply:0,comment:0,commentSession:0,inbox:0,inboxSession:0,phone:0,orders:0});
+  const tr = document.createElement('tr'); tr.className='totrow';
+  tr.innerHTML = `<td>TỔNG (${data.length})</td><td>${fmt(t.privateReply)}</td><td>${fmt(t.comment)}</td><td>${fmt(t.commentSession)}</td><td>${fmt(t.inbox)}</td><td>${fmt(t.inboxSession)}</td><td>—</td><td>${fmt(t.phone)}</td><td>${fmt(t.orders)}</td><td>100%</td>`;
+  tb.appendChild(tr);
+
+  const okN = (s.okPages||[]).length;
+  let foot = `Nguồn: thống kê Pancake — dùng ${okN}/${S.pageIds.length} page` + (s.posOk?' + POS analytics':'') + ` · ${new Date(j.updatedAt).toLocaleString('vi-VN')}`;
+  if ((s.skipped||[]).length) {
+    const names = s.skipped.map(id => (S.pages.find(p=>p.id===id)?.name)||id);
+    foot += ` · ⚠️ Bỏ qua (không hỗ trợ thống kê chat): ${names.join(', ')}`;
+  }
+  $('#foot').textContent = foot;
+}
+
+// ─── Tab chuyển view ───
+function switchView(v) {
+  v = (v === 'chat') ? 'chat' : 'pos';
+  $('#view-pos').classList.toggle('hidden', v !== 'pos');
+  $('#view-chat').classList.toggle('hidden', v !== 'chat');
+  document.querySelectorAll('#view-tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  try { localStorage.setItem('pck_view', v); } catch (_) {}
+}
+document.querySelectorAll('#view-tabs .tab').forEach(b => b.onclick = () => switchView(b.dataset.view));
+
+// ─── Events ───
+$('#b-loadpages').onclick = loadPages;
+$('#b-start').onclick = startTracking;
+$('#b-reconf').onclick = () => { if(S.timer)clearInterval(S.timer); $('#dash').classList.add('hidden'); $('#setup').classList.remove('hidden'); };
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0,10);
+}
+function applyRange(from, to) {
+  if (to < from) { const t = from; from = to; to = t; }
+  S.date = from; S.dateTo = to;
+  $('#d-date').value = from; $('#d-date-to').value = to;
+  refresh();
+}
+$('#d-date').onchange = e => { S.date = e.target.value; if (S.dateTo < S.date) { S.dateTo = S.date; $('#d-date-to').value = S.dateTo; } refresh(); };
+$('#d-date-to').onchange = e => { S.dateTo = e.target.value; if (S.dateTo < S.date) { S.date = S.dateTo; $('#d-date').value = S.date; } refresh(); };
+document.querySelectorAll('.dater .quick button').forEach(b => b.onclick = () => {
+  const t = todayVN(), r = b.dataset.range;
+  if (r === 'today') applyRange(t, t);
+  else if (r === 'yesterday') { const y = addDays(t, -1); applyRange(y, y); }
+  else if (r === '7d') applyRange(addDays(t, -6), t);
+  else if (r === 'month') applyRange(t.slice(0,8) + '01', t);
+});
+document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
+  const k = th.dataset.k;
+  if (S.sort === k) S.desc = !S.desc; else { S.sort = k; S.desc = true; }
+  if (S.last) render(S.last);
+});
+
+// ─── Boot ───
+(function init() {
+  const c = loadCfg();
+  S.chatToken = c.chatToken || ''; S.posToken = c.posToken || '';
+  S.shopId = c.shopId || ''; S.pageIds = c.pageIds || []; S.pages = c.pages || [];
+  $('#i-chat').value = S.chatToken; $('#i-pos').value = S.posToken; $('#i-shop').value = S.shopId;
+  if (S.chatToken && S.pageIds.length) {
+    enterDash();
+  } else if (S.pages.length) {
+    renderPagebox(); $('#pages-wrap').classList.remove('hidden');
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+node_modules/
+pos-token.txt
+*token*.txt
+*.har
+server.log
+*.log
+_chk.js
+.env
+.env.*
+.claude/

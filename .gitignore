@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Secrets — NEVER commit / deploy these
+pos-token.txt
+*token*.txt
+*.har
+
+# Logs & temp
+server.log
+*.log
+_chk.js
+.env
+.env.*
+
+# Editor/Claude
+.claude/
