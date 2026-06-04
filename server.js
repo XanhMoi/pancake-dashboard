@@ -632,6 +632,148 @@ app.post('/api/pages', async (req, res) => {
   }
 });
 
+// ─── WEBHOOK QUALITY MONITOR ──────────────────────────────────────────────────
+// Nhận webhook từ Pancake, đánh giá chất lượng tin nhắn nhân viên theo SOP
+
+const alertLog = [];          // in-memory, tối đa 300 entries
+const rawLog   = [];          // raw payloads đầu tiên để debug format
+const MAX_LOG  = 300;
+
+// ── Kiểm tra chất lượng tin nhắn theo SOP ──
+function checkQuality(text, staffName) {
+  const t = (text || '').trim();
+  if (!t) return [];
+  const issues = [];
+
+  // 1. Thiếu "dạ" — quy định bắt buộc trong SOP
+  if (!/^dạ[^a-z]/i.test(t) && !/\bdạ\b/i.test(t)) {
+    issues.push('Thiếu "dạ" — không đúng quy chuẩn hành văn');
+  }
+
+  // 2. Quá ngắn / hời hợt (< 30 ký tự, trừ sticker/file)
+  if (t.length < 30) {
+    issues.push(`Tin nhắn quá ngắn (${t.length} ký tự) — nghi ngờ hời hợt`);
+  }
+
+  // 3. Viết tắt / teencode
+  if (/\b(ko|k |dc|đc|cx|vs\b|mk\b|hok|ntn|tl|rep|ib|vâng\b)\b/i.test(t)) {
+    issues.push('Dùng viết tắt / teencode — vi phạm quy định văn phong');
+  }
+
+  // 4. Chỉ báo giá, không có giải thích / ưu điểm / khan hiếm
+  if (/^[\d.,\s]+(k|đ|vnd|triệu|tr)?\.?\s*$/i.test(t)) {
+    issues.push('Chỉ báo giá — thiếu ưu điểm sản phẩm và tạo khan hiếm');
+  }
+
+  // 5. Cộc lốc 1 từ ("ok", "được", "nhé", "xem", "đúng")
+  if (/^(ok|oke|được|nhé|vâng|đúng|xem|hiểu|vậy|à|ừ|uh)\.?$/i.test(t)) {
+    issues.push('Trả lời cộc lốc 1 từ — không đúng quy trình tư vấn');
+  }
+
+  return issues;
+}
+
+// ── Trích xuất message + sender từ nhiều format webhook khác nhau ──
+function extractMsg(payload) {
+  // Format 1: { event, page_id, data: { last_message: { from, message } } }
+  const lm = payload?.data?.last_message;
+  if (lm) {
+    return {
+      text:      lm.message || lm.text || '',
+      isStaff:   lm.from?.is_page === true || lm.sender?.is_page === true,
+      staffName: lm.from?.name || lm.sender?.name || '?',
+      convId:    payload?.data?.id || payload?.data?.conversation_id || '?',
+      pageId:    payload?.page_id || '?',
+    };
+  }
+  // Format 2: { message: { text, sender: { is_page, name } } }
+  const msg2 = payload?.message;
+  if (msg2) {
+    return {
+      text:      msg2.text || msg2.message || '',
+      isStaff:   msg2.sender?.is_page === true || msg2.from?.is_page === true,
+      staffName: msg2.sender?.name || msg2.from?.name || '?',
+      convId:    payload?.conversation_id || '?',
+      pageId:    payload?.page_id || '?',
+    };
+  }
+  return null;
+}
+
+// ── GET: Pancake webhook verification ──
+app.get('/webhook', (req, res) => {
+  const challenge = req.query['hub.challenge'];
+  if (challenge) return res.send(challenge);
+  res.json({ status: 'Pancake Quality Monitor active' });
+});
+
+// ── POST: nhận sự kiện tin nhắn từ Pancake ──
+app.post('/webhook', express.text({ type: '*/*', limit: '2mb' }), (req, res) => {
+  res.sendStatus(200); // trả lời ngay để Pancake không retry
+
+  let payloads;
+  try {
+    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    const parsed = JSON.parse(body);
+    payloads = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return;
+  }
+
+  // Lưu raw log (10 đầu tiên) để debug format thực tế
+  if (rawLog.length < 10) rawLog.push(payloads[0]);
+
+  for (const payload of payloads) {
+    const extracted = extractMsg(payload);
+    if (!extracted) continue;
+
+    const { text, isStaff, staffName, convId, pageId } = extracted;
+    if (!isStaff || !text.trim()) continue; // bỏ qua tin khách, bỏ qua rỗng
+
+    const issues = checkQuality(text, staffName);
+    const ts = new Date(Date.now() + 7 * 3600 * 1000).toLocaleTimeString('vi-VN');
+
+    const entry = {
+      time: ts,
+      staff: staffName,
+      message: text.slice(0, 300),
+      issues,
+      ok: issues.length === 0,
+      pageId,
+      convId,
+    };
+
+    alertLog.unshift(entry);
+    if (alertLog.length > MAX_LOG) alertLog.pop();
+
+    if (issues.length > 0) {
+      console.log(`[⚠️  ALERT ${ts}] ${staffName}: ${issues.join(' | ')}`);
+      console.log(`   Tin: "${text.slice(0, 80)}"`);
+    } else {
+      console.log(`[✅  OK    ${ts}] ${staffName}: "${text.slice(0, 60)}"`);
+    }
+  }
+});
+
+// ── GET /api/alerts — poll từ session Claude ──
+app.get('/api/alerts', (req, res) => {
+  const since = parseInt(req.query.since) || 0; // client gửi timestamp lần check trước
+  const entries = since
+    ? alertLog.filter(e => e._ts && e._ts > since)
+    : alertLog.slice(0, 50);
+  res.json({
+    total:  alertLog.length,
+    alerts: alertLog.filter(e => !e.ok).slice(0, 50),
+    recent: alertLog.slice(0, 20),
+    rawSample: rawLog[0] || null,   // debug: xem format webhook thực tế
+  });
+});
+
+app.get('/api/alerts/clear', (_req, res) => {
+  alertLog.length = 0;
+  res.json({ ok: true, cleared: true });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   const ip = Object.values(require('os').networkInterfaces())
     .flat()
