@@ -575,20 +575,23 @@ app.post('/api/metrics', async (req, res) => {
       console.error('userStats:', e.message);
       return [];
     });
-    const posP = (posToken && shopId)
-      ? fetchPosSale(posToken, shopId, pageIds, fromStr, toStr).catch(e => {
+    // Pancake dùng 1 JWT cho cả Chat API và POS API.
+    // Luôn dùng chatToken cho POS — token này luôn là session hiện tại đang active.
+    // (posToken field giữ lại để tương thích config cũ nhưng không dùng nữa.)
+    const posP = shopId
+      ? fetchPosSale(chatToken, shopId, pageIds, fromStr, toStr).catch(e => {
           console.error('POS:', e.message);
           return null;
         })
       : Promise.resolve(null);
-    const ovP = (posToken && shopId)
-      ? fetchPosOverview(posToken, shopId, fromStr, toStr).catch(e => {
+    const ovP = shopId
+      ? fetchPosOverview(chatToken, shopId, fromStr, toStr).catch(e => {
           console.error('POS overview:', e.message);
           return null;
         })
       : Promise.resolve(null);
-    const brkP = (posToken && shopId)
-      ? fetchPosBreakdowns(posToken, shopId, fromStr, toStr).catch(e => {
+    const brkP = shopId
+      ? fetchPosBreakdowns(chatToken, shopId, fromStr, toStr).catch(e => {
           console.error('POS breakdowns:', e.message);
           return null;
         })
