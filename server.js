@@ -611,6 +611,30 @@ app.post('/api/metrics', async (req, res) => {
   }
 });
 
+// ─── Debug: test POS token directly — trả về lỗi thật từ Pancake ─────────────
+app.post('/api/test-pos', async (req, res) => {
+  const { posToken, shopId } = req.body || {};
+  if (!posToken || !shopId) return res.status(400).json({ error: 'Thiếu posToken / shopId' });
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
+  const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+  const { since, until } = posBounds(today, today);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ params: { success_status: '1', success_record: 'updated_at',
+        returned_record: 'success_record', returned_status: '5', user_type: 'assign',
+        filter: {}, since, until, split_by: ['Time.hour'], select_fields: ['order_count'] } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await r.text();
+    let json; try { json = JSON.parse(text); } catch { json = null; }
+    res.json({ httpStatus: r.status, ok: r.ok, body: json || text });
+  } catch (err) {
+    res.json({ httpStatus: null, ok: false, body: err.message });
+  }
+});
+
 // Fetch the list of pages the chat token can access (for the setup screen)
 app.post('/api/pages', async (req, res) => {
   const { chatToken } = req.body || {};
