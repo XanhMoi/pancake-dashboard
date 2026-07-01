@@ -47,6 +47,7 @@
   .c.accent .val { color: var(--accent); }
   .c.green .val { color: var(--green); }
   .c.blue .val { color: var(--blue); }
+  .c.red .val { color: var(--red); }
 
   table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
   thead th { background: var(--card2); font-size: 12px; color: var(--mut); text-align: right; padding: 11px 14px; font-weight: 600; cursor: pointer; user-select: none; }
@@ -368,6 +369,19 @@ async function refresh() {
   }
 }
 
+// Thẻ "Lợi nhuận sau ADS" = Lợi nhuận Pancake − tổng chi tiêu ads (cùng khoảng ngày).
+// adSpend lấy từ backend (Meta Graph). Chưa nối token → hiện —. Âm → đỏ.
+function adCard(loiNhuan) {
+  const ad = S.last && S.last.adSpend;
+  if (ad == null) {
+    return `<div class="c"><div class="lab">Lợi nhuận sau ADS</div>
+      <div class="val muted">—</div><div class="sub">Chưa nối token ads</div></div>`;
+  }
+  const ln = loiNhuan - ad;
+  return `<div class="c ${ln >= 0 ? 'green' : 'red'}"><div class="lab">Lợi nhuận sau ADS</div>
+    <div class="val">${money(ln)}</div><div class="sub">Ads −${moneyShort(ad)}</div></div>`;
+}
+
 function renderPos(p) {
   const sec = $('#pos-section');
   if (!p) { sec.classList.add('hidden'); return; }
@@ -376,7 +390,6 @@ function renderPos(p) {
   $('#pos-charttitle').textContent = (S.date === S.dateTo)
     ? 'Doanh thu theo giờ hôm nay' : 'Doanh thu theo giờ (gộp khoảng)';
 
-  const inv = p.inventory || {};
   $('#pos-top').innerHTML = `
     <div class="c green"><div class="lab">Tổng hàng chốt</div><div class="val">${money(p.closedAmount)}</div>
       <div class="sub">Số lượng ${fmt(p.closedQty)}</div></div>
@@ -386,8 +399,7 @@ function renderPos(p) {
       <div class="sub">Đơn chốt ${fmt(p.orderCount)}</div></div>
     <div class="c accent"><div class="lab">Lợi nhuận (${pct(p.loiNhuanPct)})</div><div class="val">${money(p.loiNhuan)}</div>
       <div class="sub">LNTB ${money(p.lntb)}/đơn</div></div>
-    <div class="c"><div class="lab">Có thể bán</div><div class="val">${fmt(inv.quantity)}</div>
-      <div class="sub">Giá bán ${moneyShort(inv.sellPrice)}</div></div>
+    ${adCard(p.loiNhuan)}
   `;
 
   $('#pos-kpi').innerHTML = `

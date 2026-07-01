@@ -555,6 +555,47 @@ function buildMetrics(engRes, posRes, userStats) {
   };
 }
 
+// ─── Meta Ads spend — nguồn cho thẻ "Lợi nhuận sau ADS" ────────────────────────
+// Đọc token System User (vĩnh viễn) từ env FB_ACCESS_TOKEN — set ở Railway
+// Variables (KHÔNG nhúng repo). Cộng spend TẤT CẢ tài khoản quảng cáo trong đúng
+// khoảng ngày đang xem, quy về VND. Không có token / lỗi → trả null (thẻ hiện —).
+const FB_TOKEN = process.env.FB_ACCESS_TOKEN || '';
+const FB_GRAPH = 'https://graph.facebook.com/v19.0';
+
+// Đồng tiền không có subunit + tỷ giá quy VND (giống fb-dashboard để khớp số).
+const CCY_TO_VND = { VND: 1, USD: 25500, EUR: 27500, GBP: 32000, AUD: 16500,
+  CAD: 18500, SGD: 19000, THB: 700, JPY: 170, KRW: 19, CNY: 3500 };
+const toVnd = (amt, ccy) => (Number(amt) || 0) * (CCY_TO_VND[ccy || 'VND'] || 1);
+
+async function fbGetJson(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`FB HTTP ${r.status}`);
+  return r.json();
+}
+
+// Tổng chi tiêu ads (VND) trong khoảng [from, to] (YYYY-MM-DD, VN day). Meta
+// time_range inclusive 2 đầu → khớp đúng ngày Pancake đang hiển thị.
+async function fetchAdSpend(from, to) {
+  if (!FB_TOKEN) return null;
+  const acctUrl = `${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
+    + `&access_token=${encodeURIComponent(FB_TOKEN)}`;
+  const acctJson = await fbGetJson(acctUrl);
+  const accounts = acctJson.data || [];
+  if (!accounts.length) return 0;
+  const timeRange = JSON.stringify({ since: from, until: to });
+  const spends = await Promise.all(accounts.map(async a => {
+    try {
+      const url = `${FB_GRAPH}/${a.id}/insights?fields=spend&level=account`
+        + `&time_range=${encodeURIComponent(timeRange)}`
+        + `&access_token=${encodeURIComponent(FB_TOKEN)}`;
+      const j = await fbGetJson(url);
+      const row = (j.data || [])[0];
+      return toVnd(parseFloat(row?.spend || 0), a.currency || 'VND');
+    } catch (_) { return 0; }
+  }));
+  return Math.round(spends.reduce((s, v) => s + v, 0));
+}
+
 // ─── API ───────────────────────────────────────────────────────────────────────
 
 app.post('/api/metrics', async (req, res) => {
@@ -596,12 +637,17 @@ app.post('/api/metrics', async (req, res) => {
           return null;
         })
       : Promise.resolve(null);
+    const adP = fetchAdSpend(fromStr, toStr).catch(e => {
+      console.error('AdSpend:', e.message);
+      return null;
+    });
 
-    const [engRes, userStats, posRes, posOv, posBrk] =
-      await Promise.all([engP, userP, posP, ovP, brkP]);
+    const [engRes, userStats, posRes, posOv, posBrk, adSpend] =
+      await Promise.all([engP, userP, posP, ovP, brkP, adP]);
     const out = buildMetrics(engRes, posRes, userStats);
     out.posOverview = buildPosOverview(posOv);
     out.posBreakdowns = buildPosBreakdowns(posBrk);
+    out.adSpend = adSpend;
 
     console.log(`[${new Date().toLocaleTimeString('vi-VN')}] ${dateStr} — `
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `
