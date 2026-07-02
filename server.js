@@ -616,6 +616,90 @@ async function fetchAdSpend(from, to) {
   return Math.round(spends.reduce((s, v) => s + v, 0));
 }
 
+// ─── KÊNH LIVE: ghép chi ads Live Đại (ngày N) ↔ doanh thu Nhóm Live (ngày N+1) ──
+// Sale lên đơn sau 1 ngày Live → doanh thu Nhóm Live ngày N+1 tính cho Live Đại ngày N.
+
+function normViName(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+}
+function isLiveDai(name) {
+  return normViName(name).includes('live dai');
+}
+function dayList(from, to) {
+  const out = []; let d = from;
+  while (d <= to && out.length < 400) { out.push(d); d = nextDay(d); }
+  return out;
+}
+function normDayKey(v) {
+  if (!v) return null;
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);          // 2026-06-27...
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);                   // 27/06/2026
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : s.slice(0, 10);
+}
+async function fbGetAllPages(firstUrl, cap = 8000) {
+  const out = []; let url = firstUrl, pages = 0;
+  while (url && out.length < cap && pages < 40) {
+    const j = await fbGetJson(url);
+    out.push(...(j.data || []));
+    url = j.paging?.next || null; pages++;
+  }
+  return out;
+}
+
+// Chi ads Live Đại theo từng ngày (VND): { 'YYYY-MM-DD': spend } — null nếu chưa có FB token.
+async function fetchLiveDaiSpendByDay(from, to) {
+  if (!FB_TOKEN) return null;
+  const accounts = (await fbGetJson(`${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
+    + `&access_token=${encodeURIComponent(FB_TOKEN)}`)).data || [];
+  const timeRange = JSON.stringify({ since: from, until: to });
+  const byDay = {};
+  await Promise.all(accounts.map(async a => {
+    try {
+      const url = `${FB_GRAPH}/${a.id}/insights?level=campaign`
+        + `&fields=campaign_name,spend,date_start&time_increment=1`
+        + `&time_range=${encodeURIComponent(timeRange)}&limit=500`
+        + `&access_token=${encodeURIComponent(FB_TOKEN)}`;
+      const rows = await fbGetAllPages(url);
+      for (const r of rows) {
+        if (!isLiveDai(r.campaign_name)) continue;
+        const d = normDayKey(r.date_start);
+        if (d) byDay[d] = (byDay[d] || 0) + toVnd(parseFloat(r.spend || 0), a.currency || 'VND');
+      }
+    } catch (_) { /* bỏ qua account lỗi */ }
+  }));
+  for (const d of Object.keys(byDay)) byDay[d] = Math.round(byDay[d]);
+  return byDay;
+}
+
+// Doanh thu/LN/đơn Nhóm Live theo từng ngày: { 'YYYY-MM-DD': {doanhThu,loiNhuan,donChot} }
+async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
+  const { since, until } = posBounds(from, to);
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
+  const body = { params: {
+    success_status: '1', success_record: 'updated_at', returned_record: 'success_record',
+    returned_status: '5', user_type: 'assign', filter: {}, since, until,
+    split_by: ['User.id', 'Time.day'], select_fields: POS_BRK_FIELDS } };
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+  if (!res.ok) throw new Error(`sale per-day HTTP ${res.status}`);
+  const j = await res.json();
+  const rows = (j?.data?.[0]?.data) || j?.data || [];
+  const byDay = {};
+  for (const r of rows) {
+    const name = (r.user && r.user.name) || '';
+    if (liveNormSet.size && !liveNormSet.has(normViName(name))) continue;  // chỉ Nhóm Live
+    const day = normDayKey(r['Time.day']);
+    if (!day) continue;
+    const m = brkRowMetrics(r.result || r.success || {});
+    const acc = byDay[day] || { doanhThu: 0, loiNhuan: 0, donChot: 0 };
+    acc.doanhThu += m.doanhThu; acc.loiNhuan += m.loiNhuan; acc.donChot += m.donChot;
+    byDay[day] = acc;
+  }
+  return byDay;
+}
+
 // ─── API ───────────────────────────────────────────────────────────────────────
 
 app.post('/api/metrics', async (req, res) => {
@@ -676,6 +760,57 @@ app.post('/api/metrics', async (req, res) => {
     res.json(out);
   } catch (err) {
     console.error('metrics error:', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// ─── KÊNH LIVE: chi ads Live Đại ngày N ↔ doanh thu Nhóm Live ngày N+1 ─────────
+const klCache = new Map();  // "since_until" -> { at, data } — cache 3 phút (endpoint nặng)
+app.post('/api/kenh-live', async (req, res) => {
+  const { chatToken, posToken, shopId, since, until, liveNames } = req.body || {};
+  const token = chatToken || posToken;
+  if (!token || !shopId) return res.status(400).json({ error: 'Thiếu token / shopId' });
+  if (!since || !until) return res.status(400).json({ error: 'Thiếu khoảng ngày' });
+  const cacheKey = `${shopId}_${since}_${until}`;
+  const cached = klCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < 180000) return res.json(cached.data);
+  try {
+    const revFrom = nextDay(since), revTo = nextDay(until);   // doanh thu lệch +1 ngày
+    const liveNorm = new Set((liveNames || []).map(normViName));
+    const [adsByDay, revByDay] = await Promise.all([
+      fetchLiveDaiSpendByDay(since, until).catch(e => { console.error('LiveDai ads:', e.message); return null; }),
+      fetchLiveTeamRevByDay(token, shopId, revFrom, revTo, liveNorm).catch(e => { console.error('Live rev:', e.message); return {}; }),
+    ]);
+
+    const rows = dayList(since, until).map(adDay => {
+      const revDay = nextDay(adDay);
+      const ads = adsByDay ? (adsByDay[adDay] || 0) : null;
+      const rev = revByDay[revDay] || { doanhThu: 0, loiNhuan: 0, donChot: 0 };
+      const dt = Math.round(rev.doanhThu), ln = Math.round(rev.loiNhuan);
+      return {
+        adDay, revDay,
+        ads, doanhThu: dt, loiNhuan: ln, donChot: rev.donChot,
+        lnSauAds: ads == null ? null : ln - ads,
+        mer: (ads && ads > 0) ? dt / ads : null,
+      };
+    });
+
+    const sum = rows.reduce((s, r) => {
+      s.ads += r.ads || 0; s.doanhThu += r.doanhThu; s.loiNhuan += r.loiNhuan; s.donChot += r.donChot;
+      return s;
+    }, { ads: 0, doanhThu: 0, loiNhuan: 0, donChot: 0 });
+    const total = {
+      ...sum,
+      lnSauAds: adsByDay ? sum.loiNhuan - sum.ads : null,
+      mer: sum.ads > 0 ? sum.doanhThu / sum.ads : null,
+    };
+
+    const result = { ok: true, rows, total, adRange: [since, until], revRange: [revFrom, revTo],
+      hasFbToken: !!FB_TOKEN };
+    klCache.set(cacheKey, { at: Date.now(), data: result });
+    res.json(result);
+  } catch (err) {
+    console.error('kenh-live error:', err.message);
     res.status(502).json({ error: err.message });
   }
 });
