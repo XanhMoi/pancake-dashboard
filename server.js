@@ -562,10 +562,30 @@ function buildMetrics(engRes, posRes, userStats) {
 const FB_TOKEN = process.env.FB_ACCESS_TOKEN || '';
 const FB_GRAPH = 'https://graph.facebook.com/v19.0';
 
-// Đồng tiền không có subunit + tỷ giá quy VND (giống fb-dashboard để khớp số).
-const CCY_TO_VND = { VND: 1, USD: 25500, EUR: 27500, GBP: 32000, AUD: 16500,
-  CAD: 18500, SGD: 19000, THB: 700, JPY: 170, KRW: 19, CNY: 3500 };
+// Tỷ giá quy VND (giống fb-dashboard để khớp số) — giá trị khởi tạo, tự cập nhật
+// hằng ngày bởi refreshFxRate() từ open.er-api.com.
+const CCY_TO_VND = { VND: 1, USD: 26000, EUR: 29500, GBP: 34000, AUD: 17000,
+  CAD: 19000, SGD: 19500, THB: 750, JPY: 175, KRW: 19, CNY: 3600 };
 const toVnd = (amt, ccy) => (Number(amt) || 0) * (CCY_TO_VND[ccy || 'VND'] || 1);
+
+// Tỷ giá LIVE — tự cập nhật hằng ngày (miễn phí, không cần key). Lỗi → giữ tỷ giá cũ.
+async function refreshFxRate() {
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const rates = j?.rates;
+    if (!rates || !rates.VND) throw new Error('thiếu tỷ giá VND');
+    for (const ccy of Object.keys(CCY_TO_VND)) {
+      if (ccy !== 'VND' && rates[ccy]) CCY_TO_VND[ccy] = rates.VND / rates[ccy];
+    }
+    console.log(`💱 Tỷ giá cập nhật: 1 USD = ${Math.round(rates.VND).toLocaleString('vi-VN')}đ`);
+  } catch (err) {
+    console.warn(`💱 Lỗi kéo tỷ giá (giữ tỷ giá cũ): ${err.message}`);
+  }
+}
+refreshFxRate();
+setInterval(refreshFxRate, 12 * 60 * 60 * 1000);
 
 async function fbGetJson(url) {
   const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
