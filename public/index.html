@@ -623,12 +623,24 @@ function renderTeams(j) {
 const LIVE_NAMES = (TEAM_DEFS.find(t => t[0] === 'Live') || [,, []])[2];
 function fmtD(iso) { const [y, m, d] = (iso || '').split('-'); return d ? `${d}/${m}` : iso; }
 function todayISO() { return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10); }
+// Kênh Live hiện NGUYÊN THÁNG (ngày 1 → hôm nay) của ngày đang chọn — không bó 1 ngày.
+function monthRangeOf(dateStr) {
+  const base = (dateStr && dateStr.length >= 7) ? dateStr : todayISO();
+  const [y, m] = base.split('-').map(Number);
+  const since = `${base.slice(0, 8)}01`;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  let until = `${base.slice(0, 8)}${String(lastDay).padStart(2, '0')}`;
+  const today = todayISO();
+  if (until > today) until = today;          // không vượt quá hôm nay
+  return { since, until };
+}
 
 async function loadKenhLive() {
   const sec = $('#kenhlive-section');
   try {
+    const { since, until } = monthRangeOf(S.dateTo || S.date);
     const r = await fetch('/api/kenh-live', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatToken: S.chatToken, shopId: S.shopId, since: S.date, until: S.dateTo, liveNames: LIVE_NAMES }) });
+      body: JSON.stringify({ chatToken: S.chatToken, shopId: S.shopId, since, until, liveNames: LIVE_NAMES }) });
     const j = await r.json();
     if (!j.ok) { sec.classList.add('hidden'); return; }
     renderKenhLive(j);
