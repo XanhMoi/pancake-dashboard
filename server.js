@@ -595,12 +595,27 @@ async function fbGetJson(url) {
 
 // Tổng chi tiêu ads (VND) trong khoảng [from, to] (YYYY-MM-DD, VN day). Meta
 // time_range inclusive 2 đầu → khớp đúng ngày Pancake đang hiển thị.
+// Cache danh sách tài khoản QC + chi tiêu ads → KHÔNG gọi Meta mỗi 30s (tránh
+// rate-limit 80004 "too many calls to this ad-account").
+let _fbAccounts = { at: 0, val: null };
+async function getFbAccountsCached() {
+  if (_fbAccounts.val && Date.now() - _fbAccounts.at < 600000) return _fbAccounts.val;  // 10 phút
+  _fbAccounts = { at: Date.now(), val: (await fbGetJson(`${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
+    + `&access_token=${encodeURIComponent(FB_TOKEN)}`)).data || [] };
+  return _fbAccounts.val;
+}
+const _adSpendCache = new Map();
+async function fetchAdSpendCached(from, to) {
+  const key = `${from}_${to}`, c = _adSpendCache.get(key);
+  if (c && Date.now() - c.at < 300000) return c.val;   // 5 phút
+  const val = await fetchAdSpend(from, to);
+  _adSpendCache.set(key, { at: Date.now(), val });
+  return val;
+}
+
 async function fetchAdSpend(from, to) {
   if (!FB_TOKEN) return null;
-  const acctUrl = `${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
-    + `&access_token=${encodeURIComponent(FB_TOKEN)}`;
-  const acctJson = await fbGetJson(acctUrl);
-  const accounts = acctJson.data || [];
+  const accounts = await getFbAccountsCached();
   if (!accounts.length) return 0;
   const timeRange = JSON.stringify({ since: from, until: to });
   const spends = await Promise.all(accounts.map(async a => {
@@ -651,8 +666,7 @@ async function fbGetAllPages(firstUrl, cap = 8000) {
 // Chi ads Live Đại theo từng ngày (VND): { 'YYYY-MM-DD': spend } — null nếu chưa có FB token.
 async function fetchLiveDaiSpendByDay(from, to) {
   if (!FB_TOKEN) return null;
-  const accounts = (await fbGetJson(`${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
-    + `&access_token=${encodeURIComponent(FB_TOKEN)}`)).data || [];
+  const accounts = await getFbAccountsCached();
   const timeRange = JSON.stringify({ since: from, until: to });
   const byDay = {};
   await Promise.all(accounts.map(async a => {
@@ -741,7 +755,7 @@ app.post('/api/metrics', async (req, res) => {
           return null;
         })
       : Promise.resolve(null);
-    const adP = fetchAdSpend(fromStr, toStr).catch(e => {
+    const adP = fetchAdSpendCached(fromStr, toStr).catch(e => {
       console.error('AdSpend:', e.message);
       return null;
     });
@@ -773,7 +787,7 @@ app.post('/api/kenh-live', async (req, res) => {
   if (!since || !until) return res.status(400).json({ error: 'Thiếu khoảng ngày' });
   const cacheKey = `${shopId}_${since}_${until}`;
   const cached = klCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < 180000) return res.json(cached.data);
+  if (cached && Date.now() - cached.at < 600000) return res.json(cached.data);   // 10 phút (endpoint nặng)
   try {
     const revFrom = nextDay(since), revTo = nextDay(until);   // doanh thu lệch +1 ngày
     const liveNorm = new Set((liveNames || []).map(normViName));
