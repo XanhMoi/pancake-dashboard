@@ -6,6 +6,10 @@ pos-token.txt
 *token*.txt
 *.har
 
+# Dữ liệu phân quyền (users.json = hash mật khẩu, config.json = token Pancake)
+data/
+monitor-state.json
+
 # Logs & temp
 server.log
 *.log

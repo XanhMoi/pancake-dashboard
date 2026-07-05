@@ -20,6 +20,8 @@
 
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,6 +31,124 @@ const POS_BASE = 'https://pos.pancake.vn/api/v1';
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHÂN QUYỀN — đăng nhập + tài khoản + cấu hình kết nối (token về server)
+//
+// • Tài khoản + quyền lưu ở DATA_DIR/users.json (gắn Railway Volume để bền qua deploy).
+// • Token Pancake do ADMIN cấu hình 1 lần → DATA_DIR/config.json. User thường KHÔNG
+//   nhập/không thấy token; server tự dùng token này để lấy số, rồi lọc theo quyền.
+// • 4 mục phân quyền: chat · nhomSale · live · pos. Admin mặc định thấy hết.
+// ─────────────────────────────────────────────────────────────────────────────
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const SECRET = process.env.SESSION_SECRET || 'pancake-dash-doi-secret-nay-di';
+const PERM_KEYS = ['chat', 'nhomSale', 'live', 'pos'];
+
+function fullPerms() { return Object.fromEntries(PERM_KEYS.map(k => [k, true])); }
+function cleanPerms(p) { return Object.fromEntries(PERM_KEYS.map(k => [k, !!(p || {})[k]])); }
+function hashPw(pw, salt) { return crypto.pbkdf2Sync(String(pw), salt, 60000, 32, 'sha256').toString('hex'); }
+function readJSON(f, dflt) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return dflt; } }
+function writeJSON(f, obj) { fs.writeFileSync(f, JSON.stringify(obj, null, 2)); }
+function loadUsers() { return readJSON(USERS_FILE, { users: [] }); }
+function saveUsers(u) { writeJSON(USERS_FILE, u); }
+function findUser(u) { return (loadUsers().users || []).find(x => x.u.toLowerCase() === String(u || '').toLowerCase()); }
+function permsOf(user) { return user.role === 'admin' ? fullPerms() : cleanPerms(user.perms); }
+
+// Seed admin lần đầu (đổi mật khẩu qua env ADMIN_PASS trên Railway)
+(function seedAdmin() {
+  const d = loadUsers();
+  if (!d.users || d.users.length === 0) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const u = process.env.ADMIN_USER || 'admin';
+    const p = process.env.ADMIN_PASS || 'Xanh123@@';
+    saveUsers({ users: [{ u, salt, pass: hashPw(p, salt), role: 'admin', perms: fullPerms(), created: new Date().toISOString() }] });
+    console.log(`👤 Đã tạo admin đầu tiên: "${u}" (đổi mật khẩu qua env ADMIN_PASS)`);
+  }
+})();
+
+// Cookie phiên: base64(user).hmac  — ký bằng SECRET
+function signSess(u) { const b = Buffer.from(u).toString('base64'); return `${b}.${crypto.createHmac('sha256', SECRET).update(b).digest('hex')}`; }
+function verifySess(tok) {
+  if (!tok || !tok.includes('.')) return null;
+  const [b, h] = tok.split('.');
+  if (crypto.createHmac('sha256', SECRET).update(b).digest('hex') !== h) return null;
+  try { return Buffer.from(b, 'base64').toString('utf8'); } catch { return null; }
+}
+function parseCookies(req) {
+  const out = {}; (req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); });
+  return out;
+}
+function currentUser(req) { const u = verifySess(parseCookies(req).pd_sess); return u ? (findUser(u) || null) : null; }
+function requireAuth(req, res, next) { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Chưa đăng nhập' }); req.user = u; next(); }
+function requireAdmin(req, res, next) { const u = currentUser(req); if (!u || u.role !== 'admin') return res.status(403).json({ error: 'Chỉ admin' }); req.user = u; next(); }
+
+// ─── Đăng nhập / phiên ───
+app.post('/api/login', (req, res) => {
+  const { u, p } = req.body || {};
+  const user = findUser(u);
+  if (!user || hashPw(p, user.salt) !== user.pass) return res.status(401).json({ error: 'Sai tên đăng nhập hoặc mật khẩu' });
+  res.setHeader('Set-Cookie', `pd_sess=${signSess(user.u)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}; SameSite=Lax`);
+  res.json({ ok: true });
+});
+app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', 'pd_sess=; HttpOnly; Path=/; Max-Age=0'); res.json({ ok: true }); });
+app.get('/api/me', (req, res) => {
+  const user = currentUser(req);
+  if (!user) return res.json({ auth: false });
+  const cfg = readJSON(CONFIG_FILE, {});
+  res.json({ auth: true, u: user.u, role: user.role, perms: permsOf(user),
+    configured: !!(cfg.chatToken && (cfg.pageIds || []).length) });
+});
+
+// ─── Admin · quản lý tài khoản ───
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json({ users: (loadUsers().users || []).map(x => ({ u: x.u, role: x.role, perms: permsOf(x), created: x.created })) });
+});
+app.post('/api/admin/users', requireAdmin, (req, res) => {
+  const { u, p, perms, role } = req.body || {};
+  if (!u || !p) return res.status(400).json({ error: 'Thiếu tên đăng nhập hoặc mật khẩu' });
+  const d = loadUsers();
+  if ((d.users || []).some(x => x.u.toLowerCase() === String(u).toLowerCase())) return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  d.users.push({ u: String(u).trim(), salt, pass: hashPw(p, salt), role: role === 'admin' ? 'admin' : 'user', perms: cleanPerms(perms), created: new Date().toISOString() });
+  saveUsers(d); res.json({ ok: true });
+});
+app.post('/api/admin/users/update', requireAdmin, (req, res) => {
+  const { u, p, perms, role } = req.body || {};
+  const d = loadUsers();
+  const user = (d.users || []).find(x => x.u.toLowerCase() === String(u || '').toLowerCase());
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
+  if (perms) user.perms = cleanPerms(perms);
+  if (role) user.role = role === 'admin' ? 'admin' : 'user';
+  if (p) { user.salt = crypto.randomBytes(16).toString('hex'); user.pass = hashPw(p, user.salt); }
+  saveUsers(d); res.json({ ok: true });
+});
+app.post('/api/admin/users/delete', requireAdmin, (req, res) => {
+  const { u } = req.body || {};
+  const d = loadUsers();
+  const t = (d.users || []).find(x => x.u.toLowerCase() === String(u || '').toLowerCase());
+  if (!t) return res.status(404).json({ error: 'Không tìm thấy' });
+  if (t.role === 'admin' && (d.users || []).filter(x => x.role === 'admin').length <= 1) return res.status(400).json({ error: 'Không thể xoá admin cuối cùng' });
+  d.users = d.users.filter(x => x.u.toLowerCase() !== String(u).toLowerCase());
+  saveUsers(d); res.json({ ok: true });
+});
+
+// ─── Admin · cấu hình kết nối Pancake (token lưu server, KHÔNG trả token về client) ───
+app.get('/api/admin/config', requireAdmin, (req, res) => {
+  const cfg = readJSON(CONFIG_FILE, {});
+  res.json({ shopId: cfg.shopId || '', pageIds: cfg.pageIds || [], pages: cfg.pages || [], hasToken: !!cfg.chatToken });
+});
+app.post('/api/admin/config', requireAdmin, (req, res) => {
+  const { chatToken, shopId, pageIds, pages } = req.body || {};
+  const cfg = readJSON(CONFIG_FILE, {});
+  if (chatToken) cfg.chatToken = chatToken;   // chỉ ghi đè khi có token mới
+  if (shopId != null) cfg.shopId = shopId;
+  if (pageIds != null) cfg.pageIds = pageIds;
+  if (pages != null) cfg.pages = pages;
+  writeJSON(CONFIG_FILE, cfg); res.json({ ok: true });
+});
 
 // ─── Date helpers (Vietnam UTC+7) ─────────────────────────────────────────────
 
@@ -716,11 +836,13 @@ async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
 
 // ─── API ───────────────────────────────────────────────────────────────────────
 
-app.post('/api/metrics', async (req, res) => {
-  const { chatToken, posToken, shopId, pageIds, date, dateTo } = req.body || {};
-  if (!chatToken) return res.status(400).json({ error: 'Thiếu Chat access token' });
-  if (!Array.isArray(pageIds) || pageIds.length === 0)
-    return res.status(400).json({ error: 'Thiếu danh sách page' });
+app.post('/api/metrics', requireAuth, async (req, res) => {
+  const { date, dateTo } = req.body || {};
+  const cfg = readJSON(CONFIG_FILE, {});
+  const chatToken = cfg.chatToken, shopId = cfg.shopId, pageIds = cfg.pageIds || [];
+  const perms = permsOf(req.user);
+  if (!chatToken || !Array.isArray(pageIds) || pageIds.length === 0)
+    return res.status(400).json({ error: 'Admin chưa cấu hình kết nối Pancake (vào ⚙️ Cấu hình).' });
 
   let fromStr = date || new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
   let toStr = dateTo || fromStr;
@@ -767,6 +889,11 @@ app.post('/api/metrics', async (req, res) => {
     out.posBreakdowns = buildPosBreakdowns(posBrk);
     out.adSpend = adSpend;
 
+    // ─── Lọc theo quyền: chỉ trả dữ liệu của mục user được xem ───
+    if (!perms.pos && !perms.nhomSale) { out.posOverview = null; out.posBreakdowns = null; out.adSpend = null; }
+    if (!perms.chat && !perms.nhomSale) { out.staffDetail = []; out.staff = []; }
+    if (!perms.pos) out.adSpend = null;
+
     console.log(`[${new Date().toLocaleTimeString('vi-VN')}] ${dateStr} — `
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `
       + `${out.summary.orderTotal} đơn${out.summary.posOk ? ' (POS)' : ''}`);
@@ -780,10 +907,12 @@ app.post('/api/metrics', async (req, res) => {
 
 // ─── KÊNH LIVE: chi ads Live Đại ngày N ↔ doanh thu Nhóm Live ngày N+1 ─────────
 const klCache = new Map();  // "since_until" -> { at, data } — cache 3 phút (endpoint nặng)
-app.post('/api/kenh-live', async (req, res) => {
-  const { chatToken, posToken, shopId, since, until, liveNames } = req.body || {};
-  const token = chatToken || posToken;
-  if (!token || !shopId) return res.status(400).json({ error: 'Thiếu token / shopId' });
+app.post('/api/kenh-live', requireAuth, async (req, res) => {
+  if (!permsOf(req.user).live) return res.status(403).json({ error: 'Không có quyền xem Kênh Live' });
+  const { since, until, liveNames } = req.body || {};
+  const cfg = readJSON(CONFIG_FILE, {});
+  const token = cfg.chatToken, shopId = cfg.shopId;
+  if (!token || !shopId) return res.status(400).json({ error: 'Admin chưa cấu hình kết nối Pancake' });
   if (!since || !until) return res.status(400).json({ error: 'Thiếu khoảng ngày' });
   const cacheKey = `${shopId}_${since}_${until}`;
   const cached = klCache.get(cacheKey);
@@ -830,7 +959,7 @@ app.post('/api/kenh-live', async (req, res) => {
 });
 
 // ─── Debug: test POS token directly — trả về lỗi thật từ Pancake ─────────────
-app.post('/api/test-pos', async (req, res) => {
+app.post('/api/test-pos', requireAdmin, async (req, res) => {
   const { posToken, shopId } = req.body || {};
   if (!posToken || !shopId) return res.status(400).json({ error: 'Thiếu posToken / shopId' });
   const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
@@ -854,7 +983,7 @@ app.post('/api/test-pos', async (req, res) => {
 });
 
 // Fetch the list of pages the chat token can access (for the setup screen)
-app.post('/api/pages', async (req, res) => {
+app.post('/api/pages', requireAdmin, async (req, res) => {
   const { chatToken } = req.body || {};
   if (!chatToken) return res.status(400).json({ error: 'Thiếu Chat access token' });
   try {

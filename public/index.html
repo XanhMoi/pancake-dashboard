@@ -125,22 +125,46 @@
   .chg { font-size: 10px; margin-left: 5px; }
   .pname { display: flex; flex-direction: column; }
   .pname small { color: var(--mut); font-size: 10px; font-weight: 400; }
+
+  /* ── phân quyền / quản trị ── */
+  .permbox { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .permrow { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--txt); }
+  .permrow input { width: auto; }
+  .utable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .utable th { color: var(--mut); font-weight: 600; font-size: 11px; text-align: left; padding: 7px 8px; }
+  .utable td { padding: 9px 8px; border-top: 1px solid var(--line); text-align: left; }
+  .chip { display: inline-block; background: var(--card2); border: 1px solid var(--line); border-radius: 20px; padding: 1px 9px; font-size: 11px; margin: 1px 2px; color: var(--mut); }
+  .xbtn { background: transparent; border: 1px solid var(--line); color: var(--red); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12px; }
+  .xbtn:hover { filter: brightness(1.2); }
 </style>
 </head>
 <body>
 
-<!-- ─── SETUP ─── -->
-<div id="setup" class="setup">
-  <h1>🥞 Kết nối Pancake</h1>
-  <p class="sub">Token chỉ lưu trên máy bạn (LocalStorage) và gửi tới proxy nội bộ — không gửi đi đâu khác.</p>
-
+<!-- ─── LOGIN ─── -->
+<div id="login" class="setup hidden">
+  <h1>🔐 Đăng nhập</h1>
+  <p class="sub">Báo cáo nhân viên Pancake — nội bộ YOLO LIFE GROUP.</p>
   <div class="fld">
-    <label>Chat access token <span class="muted">(pancake.vn)</span></label>
-    <input id="i-chat" type="password" placeholder="access_token của pancake.vn">
+    <label>Tên đăng nhập</label>
+    <input id="l-user" type="text" placeholder="tên đăng nhập" autocomplete="username">
   </div>
   <div class="fld">
-    <label>POS access token <span class="muted">(pos.pancake.vn — tùy chọn, để đồng bộ đơn 100%)</span></label>
-    <input id="i-pos" type="password" placeholder="access_token của pos.pancake.vn">
+    <label>Mật khẩu</label>
+    <input id="l-pass" type="password" placeholder="mật khẩu" autocomplete="current-password">
+  </div>
+  <button class="btn" id="b-login">Đăng nhập →</button>
+  <div class="err" id="login-err"></div>
+</div>
+
+<!-- ─── CẤU HÌNH KẾT NỐI (admin) ─── -->
+<div id="setup" class="setup hidden">
+  <h1>⚙️ Cấu hình kết nối Pancake</h1>
+  <p class="sub">Token lưu trên <b>server</b>, dùng chung cho mọi tài khoản. Chỉ admin cấu hình — nhân viên đăng nhập là xem, không cần token.</p>
+
+  <div class="fld">
+    <label>Pancake access token <span class="muted">(1 JWT dùng cho cả Chat + POS)</span></label>
+    <input id="i-chat" type="password" placeholder="dán token mới; để trống nếu không đổi">
+    <div class="hint" id="i-chat-has"></div>
   </div>
   <div class="fld">
     <label>Shop ID <span class="muted">(POS)</span></label>
@@ -154,9 +178,38 @@
     <div class="fld" style="margin-top:14px;">
       <label>Chọn các Page cần theo dõi</label>
       <div class="pagebox" id="pagebox"></div>
-      <div class="hint">Tick đúng những page bạn muốn (vd 7 page). Tổng số liệu sẽ cộng từ các page này.</div>
+      <div class="hint">Tick đúng những page cần theo dõi. Tổng số liệu cộng từ các page này.</div>
     </div>
-    <button class="btn" id="b-start">Bắt đầu theo dõi →</button>
+  </div>
+  <div style="margin-top:14px; display:flex; gap:8px;">
+    <button class="btn" id="b-start">Lưu &amp; xem dashboard →</button>
+    <button class="btn ghost hidden" id="b-setup-back">← Quay lại</button>
+  </div>
+</div>
+
+<!-- ─── QUẢN TRỊ TÀI KHOẢN (admin) ─── -->
+<div id="admin" class="setup hidden" style="max-width:760px;">
+  <h1>👑 Quản trị tài khoản</h1>
+  <p class="sub">Anh là admin. Tạo tài khoản cho nhân viên và tick các mục họ được xem. Chỉnh xong bấm <b>Lưu</b> ở từng dòng.</p>
+
+  <div id="admin-list" style="margin-bottom:8px;"></div>
+
+  <h3 style="margin:20px 0 10px; font-size:15px;">➕ Thêm tài khoản</h3>
+  <div class="fld"><label>Tên đăng nhập</label><input id="a-user" type="text" placeholder="vd: thu, tuvan1"></div>
+  <div class="fld"><label>Mật khẩu</label><input id="a-pass" type="text" placeholder="mật khẩu"></div>
+  <div class="fld">
+    <label>Được xem những mục nào?</label>
+    <div class="permbox" id="a-perms">
+      <label class="permrow"><input type="checkbox" data-perm="chat"> 👥 Thống kê chi tiết · Nhân viên</label>
+      <label class="permrow"><input type="checkbox" data-perm="nhomSale"> 🧩 Dashboard theo nhóm sale</label>
+      <label class="permrow"><input type="checkbox" data-perm="live"> 🔴 Kênh Live (chi ads)</label>
+      <label class="permrow"><input type="checkbox" data-perm="pos"> 🛒 POS · Tổng quan</label>
+    </div>
+  </div>
+  <div class="err" id="admin-err"></div>
+  <div style="display:flex; gap:8px;">
+    <button class="btn" id="b-adduser">Tạo tài khoản</button>
+    <button class="btn ghost" id="b-admin-back">← Quay lại dashboard</button>
   </div>
 </div>
 
@@ -177,7 +230,9 @@
         <button class="btn ghost sm" data-range="month">Tháng này</button>
       </span>
     </div>
-    <button class="btn ghost" id="b-reconf">Cấu hình</button>
+    <button class="btn ghost hidden" id="b-admin-open">👑 Quản trị</button>
+    <button class="btn ghost hidden" id="b-reconf">⚙️ Cấu hình</button>
+    <button class="btn ghost" id="b-logout">Đăng xuất</button>
   </div>
 
   <div id="poswarn" class="warn hidden">⚠️ Chưa kết nối POS — số đơn đang lấy tạm từ thống kê chat. Vào Cấu hình nhập Shop ID (VD: 230277434) để đồng bộ đơn chính xác 100%.</div>
@@ -307,76 +362,183 @@ function fmtTime(sec) {
   return `${s}s`;
 }
 
-// ─── Setup ───
-function loadCfg() {
-  try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); } catch { return {}; }
-}
-function saveCfg() {
-  localStorage.setItem(CFG_KEY, JSON.stringify({
-    chatToken:S.chatToken, posToken:S.posToken, shopId:S.shopId, pageIds:S.pageIds, pages:S.pages
-  }));
+// ─── Auth / phân quyền ───
+let ME = null, PERMS = {};
+const PERM_LABELS = { chat:'👥 Thống kê NV', nhomSale:'🧩 Nhóm sale', live:'🔴 Kênh Live', pos:'🛒 POS' };
+
+function hideAll() { ['#login','#setup','#admin','#dash'].forEach(x => $(x).classList.add('hidden')); }
+function showLogin() { if (S.timer) clearInterval(S.timer); hideAll(); $('#login').classList.remove('hidden'); $('#l-user').focus(); }
+
+async function boot() {
+  try {
+    const me = await (await fetch('/api/me')).json();
+    if (!me.auth) return showLogin();
+    ME = me; PERMS = me.perms || {};
+    if (me.role === 'admin' && !me.configured) return openSetup(true);
+    enterDash();
+  } catch (e) { showLogin(); }
 }
 
+async function doLogin() {
+  const err = $('#login-err'); err.textContent = '';
+  const u = $('#l-user').value.trim(), p = $('#l-pass').value;
+  if (!u || !p) { err.textContent = 'Nhập tên đăng nhập và mật khẩu.'; return; }
+  $('#b-login').textContent = 'Đang vào…';
+  try {
+    const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ u, p }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Đăng nhập lỗi');
+    $('#l-pass').value = '';
+    await boot();
+  } catch (e) { err.textContent = e.message; } finally { $('#b-login').textContent = 'Đăng nhập →'; }
+}
+async function doLogout() { try { await fetch('/api/logout', { method:'POST' }); } catch (_) {} ME = null; showLogin(); }
+
+// ─── Cấu hình kết nối (admin) ───
+async function openSetup(first) {
+  hideAll(); $('#setup').classList.remove('hidden');
+  try {
+    const c = await (await fetch('/api/admin/config')).json();
+    S.shopId = c.shopId || ''; S.pages = c.pages || []; S.pageIds = c.pageIds || [];
+    $('#i-shop').value = S.shopId; $('#i-chat').value = '';
+    $('#i-chat-has').textContent = c.hasToken ? '✓ Đã có token trên server — để trống nếu không đổi.' : '⚠️ Chưa có token — nhập lần đầu.';
+    if (S.pages.length) { renderPagebox(); $('#pages-wrap').classList.remove('hidden'); }
+  } catch (_) {}
+  $('#b-setup-back').classList.toggle('hidden', !!first);
+}
 async function loadPages() {
   const err = $('#setup-err'); err.textContent = '';
-  S.chatToken = $('#i-chat').value.trim();
-  S.posToken = $('#i-pos').value.trim();
-  S.shopId = $('#i-shop').value.trim();
-  if (!S.chatToken) { err.textContent = 'Nhập Chat access token trước.'; return; }
+  const chatToken = $('#i-chat').value.trim();
   $('#b-loadpages').textContent = 'Đang tải…';
   try {
-    const r = await fetch('/api/pages', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ chatToken: S.chatToken }) });
+    const r = await fetch('/api/pages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ chatToken }) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Lỗi tải page');
     S.pages = j.pages || [];
-    renderPagebox();
-    $('#pages-wrap').classList.remove('hidden');
-  } catch (e) {
-    err.textContent = e.message;
-  } finally {
-    $('#b-loadpages').textContent = 'Tải danh sách Page';
-  }
+    renderPagebox(); $('#pages-wrap').classList.remove('hidden');
+  } catch (e) { err.textContent = e.message; } finally { $('#b-loadpages').textContent = 'Tải danh sách Page'; }
 }
-
 function renderPagebox() {
   const box = $('#pagebox'); box.innerHTML = '';
   for (const p of S.pages) {
-    const row = document.createElement('label');
-    row.className = 'pagerow';
+    const row = document.createElement('label'); row.className = 'pagerow';
     const checked = S.pageIds.includes(p.id) ? 'checked' : '';
     row.innerHTML = `<input type="checkbox" value="${p.id}" ${checked}> <span>${p.name}</span> <span class="muted" style="margin-left:auto;font-size:11px">${p.platform||''}</span>`;
     box.appendChild(row);
   }
 }
-
-function startTracking() {
+async function saveConfig() {
+  const err = $('#setup-err'); err.textContent = '';
   const checks = [...document.querySelectorAll('#pagebox input:checked')].map(c => c.value);
-  if (checks.length === 0) { $('#setup-err').textContent = 'Chọn ít nhất 1 page.'; return; }
-  S.pageIds = checks;
-  saveCfg();
-  enterDash();
+  if (checks.length === 0) { err.textContent = 'Chọn ít nhất 1 page.'; return; }
+  const body = { shopId: $('#i-shop').value.trim(), pageIds: checks, pages: S.pages };
+  const tok = $('#i-chat').value.trim(); if (tok) body.chatToken = tok;
+  $('#b-start').textContent = 'Đang lưu…';
+  try {
+    const r = await fetch('/api/admin/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Lưu lỗi');
+    S.shopId = body.shopId; S.pageIds = checks;
+    enterDash();
+  } catch (e) { err.textContent = e.message; } finally { $('#b-start').textContent = 'Lưu & xem dashboard →'; }
+}
+
+// ─── Trang quản trị tài khoản (admin) ───
+async function openAdmin() { hideAll(); $('#admin').classList.remove('hidden'); await renderAdminList(); }
+async function renderAdminList() {
+  const box = $('#admin-list');
+  try {
+    const j = await (await fetch('/api/admin/users')).json();
+    const rows = (j.users || []).map(u => {
+      if (u.role === 'admin')
+        return `<tr><td><b>${u.u}</b> <span class="chip" style="color:var(--accent)">admin · xem tất cả</span></td><td colspan="2"></td></tr>`;
+      const checks = Object.keys(PERM_LABELS).map(k =>
+        `<label class="permrow" style="display:inline-flex;margin:0 12px 4px 0"><input type="checkbox" data-uperm="${u.u}" data-perm="${k}" ${u.perms[k]?'checked':''}> ${PERM_LABELS[k]}</label>`).join('');
+      return `<tr>
+        <td style="vertical-align:top"><b>${u.u}</b></td>
+        <td>${checks}</td>
+        <td style="text-align:right;white-space:nowrap;vertical-align:top">
+          <button class="xbtn" style="color:var(--green)" data-save="${u.u}">Lưu</button>
+          <button class="xbtn" style="color:var(--accent)" data-rp="${u.u}">MK</button>
+          <button class="xbtn" data-del="${u.u}">Xoá</button></td></tr>`;
+    }).join('');
+    box.innerHTML = `<table class="utable"><thead><tr><th>Tài khoản</th><th>Được xem mục</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    box.querySelectorAll('[data-save]').forEach(b => b.onclick = () => savePerms(b));
+    box.querySelectorAll('[data-rp]').forEach(b => b.onclick = () => resetPass(b.dataset.rp));
+    box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteUser(b.dataset.del));
+  } catch (e) { box.innerHTML = `<div class="err">${e.message}</div>`; }
+}
+async function savePerms(btn) {
+  const u = btn.dataset.save, perms = {};
+  document.querySelectorAll(`[data-uperm="${u}"]`).forEach(c => { if (c.checked) perms[c.dataset.perm] = true; });
+  try {
+    const r = await fetch('/api/admin/users/update', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ u, perms }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    btn.textContent = '✓ Đã lưu'; setTimeout(() => btn.textContent = 'Lưu', 1200);
+  } catch (e) { $('#admin-err').textContent = e.message; }
+}
+async function addUser() {
+  const err = $('#admin-err'); err.textContent = '';
+  const u = $('#a-user').value.trim(), p = $('#a-pass').value;
+  const perms = {}; document.querySelectorAll('#a-perms input:checked').forEach(c => perms[c.dataset.perm] = true);
+  if (!u || !p) { err.textContent = 'Nhập tên đăng nhập và mật khẩu.'; return; }
+  try {
+    const r = await fetch('/api/admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ u, p, perms }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Lỗi');
+    $('#a-user').value = ''; $('#a-pass').value = '';
+    document.querySelectorAll('#a-perms input').forEach(c => c.checked = false);
+    renderAdminList();
+  } catch (e) { err.textContent = e.message; }
+}
+async function resetPass(u) {
+  const p = prompt(`Mật khẩu mới cho "${u}":`); if (!p) return;
+  try {
+    const r = await fetch('/api/admin/users/update', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ u, p }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    $('#admin-err').textContent = ''; alert('Đã đổi mật khẩu.');
+  } catch (e) { $('#admin-err').textContent = e.message; }
+}
+async function deleteUser(u) {
+  if (!confirm(`Xoá tài khoản "${u}"?`)) return;
+  try {
+    const r = await fetch('/api/admin/users/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ u }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    renderAdminList();
+  } catch (e) { $('#admin-err').textContent = e.message; }
 }
 
 // ─── Dashboard ───
 function enterDash() {
-  $('#setup').classList.add('hidden');
-  $('#dash').classList.remove('hidden');
+  hideAll(); $('#dash').classList.remove('hidden');
+  applyPerms();
   S.date = S.date || todayVN();
   S.dateTo = S.dateTo || S.date;
   $('#d-date').value = S.date;
   $('#d-date-to').value = S.dateTo;
-  switchView(localStorage.getItem('pck_view') || 'pos');
   refresh();
   if (S.timer) clearInterval(S.timer);
   S.timer = setInterval(refresh, 30000); // realtime: 30s
+}
+function applyPerms() {
+  const canPos = !!(PERMS.pos || PERMS.nhomSale || PERMS.live);
+  const canChat = !!PERMS.chat;
+  document.querySelector('.tab[data-view="pos"]').classList.toggle('hidden', !canPos);
+  document.querySelector('.tab[data-view="chat"]').classList.toggle('hidden', !canChat);
+  const isAdmin = ME && ME.role === 'admin';
+  $('#b-admin-open').classList.toggle('hidden', !isAdmin);
+  $('#b-reconf').classList.toggle('hidden', !isAdmin);
+  let v = localStorage.getItem('pck_view') || 'pos';
+  if (v === 'pos' && !canPos) v = 'chat';
+  if (v === 'chat' && !canChat) v = 'pos';
+  switchView(v);
 }
 
 async function refresh() {
   $('#live-txt').textContent = 'đang cập nhật…';
   try {
     const r = await fetch('/api/metrics', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ chatToken:S.chatToken, posToken:S.posToken, shopId:S.shopId, pageIds:S.pageIds, date:S.date, dateTo:S.dateTo }) });
+      body: JSON.stringify({ date:S.date, dateTo:S.dateTo }) });
+    if (r.status === 401) return showLogin();
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Lỗi');
     S.last = j;
@@ -641,7 +803,7 @@ async function loadKenhLive() {
   try {
     const { since, until } = monthRangeOf(S.dateTo || S.date);
     const r = await fetch('/api/kenh-live', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatToken: S.chatToken, shopId: S.shopId, since, until, liveNames: LIVE_NAMES }) });
+      body: JSON.stringify({ since, until, liveNames: LIVE_NAMES }) });
     const j = await r.json();
     if (!j.ok) { sec.classList.add('hidden'); return; }
     renderKenhLive(j);
@@ -708,12 +870,13 @@ function renderKenhLive(j) {
 
 function render(j) {
   const s = j.summary;
-  renderPos(j.posOverview);
-  renderBreakdowns(j.posBreakdowns);
-  renderTeams(j);
-  loadKenhLive();
-  $('#poswarn').classList.toggle('hidden', !!s.posOk);
+  if (PERMS.pos) { renderPos(j.posOverview); renderBreakdowns(j.posBreakdowns); }
+  else $('#pos-section').classList.add('hidden');
+  if (PERMS.nhomSale) renderTeams(j); else $('#teams-section').classList.add('hidden');
+  if (PERMS.live) loadKenhLive(); else $('#kenhlive-section').classList.add('hidden');
+  $('#poswarn').classList.toggle('hidden', !PERMS.pos || !!s.posOk);
 
+  if (!PERMS.chat) return;   // không có quyền chat → không vẽ phần thống kê chi tiết
   $('#cards').innerHTML = `
     <div class="c accent"><div class="lab">Tổng tương tác</div><div class="val">${fmt(s.totalInteractions)}</div>
       <div class="sub">Tin nhắn ${fmt(s.totalInbox)} · Bình luận ${fmt(s.totalComment)}</div></div>
@@ -780,9 +943,17 @@ function switchView(v) {
 document.querySelectorAll('#view-tabs .tab').forEach(b => b.onclick = () => switchView(b.dataset.view));
 
 // ─── Events ───
+$('#b-login').onclick = doLogin;
+$('#l-user').onkeydown = e => { if (e.key === 'Enter') $('#l-pass').focus(); };
+$('#l-pass').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+$('#b-logout').onclick = doLogout;
 $('#b-loadpages').onclick = loadPages;
-$('#b-start').onclick = startTracking;
-$('#b-reconf').onclick = () => { if(S.timer)clearInterval(S.timer); $('#dash').classList.add('hidden'); $('#setup').classList.remove('hidden'); };
+$('#b-start').onclick = saveConfig;
+$('#b-setup-back').onclick = () => enterDash();
+$('#b-reconf').onclick = () => openSetup(false);
+$('#b-admin-open').onclick = openAdmin;
+$('#b-adduser').onclick = addUser;
+$('#b-admin-back').onclick = () => enterDash();
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0,10);
@@ -809,17 +980,7 @@ document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
 });
 
 // ─── Boot ───
-(function init() {
-  const c = loadCfg();
-  S.chatToken = c.chatToken || ''; S.posToken = c.posToken || '';
-  S.shopId = c.shopId || ''; S.pageIds = c.pageIds || []; S.pages = c.pages || [];
-  $('#i-chat').value = S.chatToken; $('#i-pos').value = S.posToken; $('#i-shop').value = S.shopId;
-  if (S.chatToken && S.pageIds.length) {
-    enterDash();
-  } else if (S.pages.length) {
-    renderPagebox(); $('#pages-wrap').classList.remove('hidden');
-  }
-})();
+boot();
 </script>
 </body>
 </html>
