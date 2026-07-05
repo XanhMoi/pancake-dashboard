@@ -194,6 +194,12 @@
 
   <div id="admin-list" style="margin-bottom:8px;"></div>
 
+  <div style="display:flex; align-items:center; gap:12px; margin:20px 0 8px;">
+    <h3 style="font-size:15px; margin:0;">📜 Đăng nhập gần đây</h3>
+    <button class="xbtn" id="b-logout-all" style="color:var(--accent)">🔴 Đăng xuất tất cả</button>
+  </div>
+  <div id="login-log"></div>
+
   <h3 style="margin:20px 0 10px; font-size:15px;">➕ Thêm tài khoản</h3>
   <div class="fld"><label>Tên đăng nhập</label><input id="a-user" type="text" placeholder="vd: thu, tuvan1"></div>
   <div class="fld"><label>Mật khẩu</label><input id="a-pass" type="text" placeholder="mật khẩu"></div>
@@ -445,28 +451,54 @@ async function saveConfig() {
 
 // ─── Trang quản trị tài khoản (admin) ───
 async function openAdmin() { hideAll(); $('#admin').classList.remove('hidden'); await renderAdminList(); }
+function fmtWhen(iso) {
+  if (!iso) return '<span class="muted">chưa từng</span>';
+  const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'vừa xong';
+  if (diff < 3600) return Math.floor(diff/60) + ' phút trước';
+  if (diff < 86400) return Math.floor(diff/3600) + ' giờ trước';
+  return d.toLocaleDateString('vi-VN') + ' ' + d.toLocaleTimeString('vi-VN', {hour:'2-digit',minute:'2-digit'});
+}
 async function renderAdminList() {
   const box = $('#admin-list');
   try {
-    const j = await (await fetch('/api/admin/users')).json();
-    const rows = (j.users || []).map(u => {
+    const [uj, lj] = await Promise.all([
+      fetch('/api/admin/users').then(r => r.json()),
+      fetch('/api/admin/logins').then(r => r.json()),
+    ]);
+    const rows = (uj.users || []).map(u => {
+      const online = `<span class="muted" style="font-size:12px">${fmtWhen(u.lastLogin)}</span>`;
       if (u.role === 'admin')
-        return `<tr><td><b>${u.u}</b> <span class="chip" style="color:var(--accent)">admin · xem tất cả</span></td><td colspan="2"></td></tr>`;
+        return `<tr><td><b>${u.u}</b> <span class="chip" style="color:var(--accent)">admin · xem tất cả</span></td><td style="white-space:nowrap">${online}</td><td></td></tr>`;
       const checks = Object.keys(PERM_LABELS).map(k =>
         `<label class="permrow" style="display:inline-flex;margin:0 12px 4px 0"><input type="checkbox" data-uperm="${u.u}" data-perm="${k}" ${u.perms[k]?'checked':''}> ${PERM_LABELS[k]}</label>`).join('');
       return `<tr>
-        <td style="vertical-align:top"><b>${u.u}</b></td>
-        <td>${checks}</td>
+        <td style="vertical-align:top"><b>${u.u}</b><div style="margin-top:6px">${checks}</div></td>
+        <td style="vertical-align:top;white-space:nowrap">${online}</td>
         <td style="text-align:right;white-space:nowrap;vertical-align:top">
           <button class="xbtn" style="color:var(--green)" data-save="${u.u}">Lưu</button>
           <button class="xbtn" style="color:var(--accent)" data-rp="${u.u}">MK</button>
           <button class="xbtn" data-del="${u.u}">Xoá</button></td></tr>`;
     }).join('');
-    box.innerHTML = `<table class="utable"><thead><tr><th>Tài khoản</th><th>Được xem mục</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    box.innerHTML = `<table class="utable"><thead><tr><th>Tài khoản · quyền xem</th><th>Online lần cuối</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
     box.querySelectorAll('[data-save]').forEach(b => b.onclick = () => savePerms(b));
     box.querySelectorAll('[data-rp]').forEach(b => b.onclick = () => resetPass(b.dataset.rp));
     box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteUser(b.dataset.del));
+
+    const logs = (lj.logins || []).slice(0, 20);
+    $('#login-log').innerHTML = logs.length
+      ? `<table class="utable"><tbody>${logs.map(x => `<tr><td><b>${x.u}</b></td><td class="muted" style="text-align:right;white-space:nowrap">${fmtWhen(x.at)}</td></tr>`).join('')}</tbody></table>`
+      : '<div class="muted" style="font-size:13px">Chưa ghi được lượt đăng nhập nào.</div>';
   } catch (e) { box.innerHTML = `<div class="err">${e.message}</div>`; }
+}
+async function logoutAll() {
+  if (!confirm('Đăng xuất TẤT CẢ tài khoản? Mọi người (trừ anh) sẽ phải đăng nhập lại.')) return;
+  try {
+    const r = await fetch('/api/admin/logout-all', { method:'POST' });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    alert('Đã đăng xuất toàn bộ phiên.');
+    renderAdminList();
+  } catch (e) { $('#admin-err').textContent = e.message; }
 }
 async function savePerms(btn) {
   const u = btn.dataset.save, perms = {};
@@ -952,6 +984,7 @@ $('#b-start').onclick = saveConfig;
 $('#b-setup-back').onclick = () => enterDash();
 $('#b-reconf').onclick = () => openSetup(false);
 $('#b-admin-open').onclick = openAdmin;
+$('#b-logout-all').onclick = logoutAll;
 $('#b-adduser').onclick = addUser;
 $('#b-admin-back').onclick = () => enterDash();
 function addDays(dateStr, n) {

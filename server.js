@@ -44,6 +44,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const LOGINS_FILE = path.join(DATA_DIR, 'logins.json');
 const SECRET = process.env.SESSION_SECRET || 'pancake-dash-doi-secret-nay-di';
 const PERM_KEYS = ['chat', 'nhomSale', 'live', 'pos'];
 
@@ -56,6 +57,12 @@ function loadUsers() { return readJSON(USERS_FILE, { users: [] }); }
 function saveUsers(u) { writeJSON(USERS_FILE, u); }
 function findUser(u) { return (loadUsers().users || []).find(x => x.u.toLowerCase() === String(u || '').toLowerCase()); }
 function permsOf(user) { return user.role === 'admin' ? fullPerms() : cleanPerms(user.perms); }
+function recordLogin(u) {
+  const log = readJSON(LOGINS_FILE, { logins: [] });
+  log.logins.unshift({ u, at: new Date().toISOString() });
+  log.logins = log.logins.slice(0, 100);   // giữ 100 lượt gần nhất
+  writeJSON(LOGINS_FILE, log);
+}
 
 // Seed admin lần đầu (đổi mật khẩu qua env ADMIN_PASS trên Railway)
 (function seedAdmin() {
@@ -69,28 +76,43 @@ function permsOf(user) { return user.role === 'admin' ? fullPerms() : cleanPerms
   }
 })();
 
-// Cookie phiên: base64(user).hmac  — ký bằng SECRET
-function signSess(u) { const b = Buffer.from(u).toString('base64'); return `${b}.${crypto.createHmac('sha256', SECRET).update(b).digest('hex')}`; }
+// Cookie phiên: base64("user|sv").hmac  — ký bằng SECRET; sv = session version
+function signSess(u, sv) { const b = Buffer.from(`${u}|${sv || 1}`).toString('base64'); return `${b}.${crypto.createHmac('sha256', SECRET).update(b).digest('hex')}`; }
 function verifySess(tok) {
   if (!tok || !tok.includes('.')) return null;
   const [b, h] = tok.split('.');
   if (crypto.createHmac('sha256', SECRET).update(b).digest('hex') !== h) return null;
-  try { return Buffer.from(b, 'base64').toString('utf8'); } catch { return null; }
+  try { const [u, sv] = Buffer.from(b, 'base64').toString('utf8').split('|'); return { u, sv: Number(sv) || 1 }; } catch { return null; }
 }
 function parseCookies(req) {
   const out = {}; (req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); });
   return out;
 }
-function currentUser(req) { const u = verifySess(parseCookies(req).pd_sess); return u ? (findUser(u) || null) : null; }
+function currentUser(req) {
+  const s = verifySess(parseCookies(req).pd_sess);
+  if (!s) return null;
+  const user = findUser(s.u);
+  if (!user) return null;                       // tài khoản bị xoá → phiên vô hiệu ngay
+  if ((user.sv || 1) !== s.sv) return null;     // đổi MK / "đăng xuất tất cả" → phiên cũ vô hiệu
+  return user;
+}
+function setSessCookie(res, user) {
+  res.setHeader('Set-Cookie', `pd_sess=${signSess(user.u, user.sv || 1)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}; SameSite=Lax`);
+}
 function requireAuth(req, res, next) { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Chưa đăng nhập' }); req.user = u; next(); }
 function requireAdmin(req, res, next) { const u = currentUser(req); if (!u || u.role !== 'admin') return res.status(403).json({ error: 'Chỉ admin' }); req.user = u; next(); }
 
 // ─── Đăng nhập / phiên ───
 app.post('/api/login', (req, res) => {
   const { u, p } = req.body || {};
-  const user = findUser(u);
+  const d = loadUsers();
+  const user = (d.users || []).find(x => x.u.toLowerCase() === String(u || '').toLowerCase());
   if (!user || hashPw(p, user.salt) !== user.pass) return res.status(401).json({ error: 'Sai tên đăng nhập hoặc mật khẩu' });
-  res.setHeader('Set-Cookie', `pd_sess=${signSess(user.u)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}; SameSite=Lax`);
+  if (!user.sv) user.sv = 1;
+  user.lastLogin = new Date().toISOString();   // ghi "online lần cuối"
+  saveUsers(d);
+  recordLogin(user.u);                          // ghi nhật ký login gần đây
+  setSessCookie(res, user);
   res.json({ ok: true });
 });
 app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', 'pd_sess=; HttpOnly; Path=/; Max-Age=0'); res.json({ ok: true }); });
@@ -104,7 +126,15 @@ app.get('/api/me', (req, res) => {
 
 // ─── Admin · quản lý tài khoản ───
 app.get('/api/admin/users', requireAdmin, (req, res) => {
-  res.json({ users: (loadUsers().users || []).map(x => ({ u: x.u, role: x.role, perms: permsOf(x), created: x.created })) });
+  res.json({ users: (loadUsers().users || []).map(x => ({ u: x.u, role: x.role, perms: permsOf(x), created: x.created, lastLogin: x.lastLogin || null })) });
+});
+app.get('/api/admin/logins', requireAdmin, (req, res) => { res.json(readJSON(LOGINS_FILE, { logins: [] })); });
+app.post('/api/admin/logout-all', requireAdmin, (req, res) => {
+  const d = loadUsers();
+  (d.users || []).forEach(x => { x.sv = (x.sv || 1) + 1; });   // đá mọi phiên
+  saveUsers(d);
+  setSessCookie(res, findUser(req.user.u));                    // cấp phiên mới cho chính admin để không tự đá mình
+  res.json({ ok: true });
 });
 app.post('/api/admin/users', requireAdmin, (req, res) => {
   const { u, p, perms, role } = req.body || {};
@@ -122,8 +152,11 @@ app.post('/api/admin/users/update', requireAdmin, (req, res) => {
   if (!user) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
   if (perms) user.perms = cleanPerms(perms);
   if (role) user.role = role === 'admin' ? 'admin' : 'user';
-  if (p) { user.salt = crypto.randomBytes(16).toString('hex'); user.pass = hashPw(p, user.salt); }
-  saveUsers(d); res.json({ ok: true });
+  if (p) { user.salt = crypto.randomBytes(16).toString('hex'); user.pass = hashPw(p, user.salt); user.sv = (user.sv || 1) + 1; }   // đổi MK → văng phiên cũ
+  saveUsers(d);
+  // nếu admin đổi MK của chính mình → cấp phiên mới để không tự đá mình
+  if (p && req.user.u.toLowerCase() === user.u.toLowerCase()) setSessCookie(res, user);
+  res.json({ ok: true });
 });
 app.post('/api/admin/users/delete', requireAdmin, (req, res) => {
   const { u } = req.body || {};
