@@ -40,7 +40,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 //   nhập/không thấy token; server tự dùng token này để lấy số, rồi lọc theo quyền.
 // • 4 mục phân quyền: chat · nhomSale · live · pos. Admin mặc định thấy hết.
 // ─────────────────────────────────────────────────────────────────────────────
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Ưu tiên Railway Volume (tự set RAILWAY_VOLUME_MOUNT_PATH khi gắn volume) → khỏi set DATA_DIR tay
+const DATA_DIR = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
