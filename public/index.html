@@ -590,10 +590,11 @@ function renderTeams(j) {
     const rows = shown.map(m => `
       <tr><td style="text-align:left">${m.name}</td>
       <td>${money(m.doanhThu)}</td>
+      <td${m.loiNhuan < 0 ? ' style="color:#f87171"' : ''}>${money(m.loiNhuan)}</td>
       <td>${fmt(m.donChot)}</td>
       <td>${pct(m.totalOrder > 0 ? (m.donChot/m.totalOrder)*100 : 0)}</td>
       <td>${fmt(m.tuongTac)}</td>
-      <td>${fmt(m.sdt)}</td></tr>`).join('') || `<tr><td colspan="6" class="muted" style="text-align:center">— chưa có số liệu —</td></tr>`;
+      <td>${fmt(m.sdt)}</td></tr>`).join('') || `<tr><td colspan="7" class="muted" style="text-align:center">— chưa có số liệu —</td></tr>`;
 
     return `<div class="teamblock">
       <div class="thead">
@@ -611,7 +612,7 @@ function renderTeams(j) {
         ${kpi('SL bán', fmt(t.slBan))}
       </div>
       <table><thead><tr>
-        <th style="text-align:left">Nhân viên</th><th>Doanh thu</th><th>Đơn</th>
+        <th style="text-align:left">Nhân viên</th><th>Doanh thu</th><th>Lợi nhuận</th><th>Đơn</th>
         <th>Tỉ lệ chốt</th><th>Tương tác</th><th>SĐT</th>
       </tr></thead><tbody>${rows}</tbody></table>
       ${mems.length > shown.length ? `<div class="more">… và ${mems.length - shown.length} NV khác</div>` : ''}
