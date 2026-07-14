@@ -998,16 +998,17 @@ app.post('/api/kenh-live', requireAuth, async (req, res) => {
 app.post('/api/admin/pos-probe', requireAdmin, async (req, res) => {
   const cfg = readJSON(CONFIG_FILE, {});
   if (!cfg.chatToken || !cfg.shopId) return res.status(400).json({ error: 'Chưa cấu hình token/shopId' });
-  const { date, dateTo, params, drop } = req.body || {};
+  const { date, dateTo, params, drop, shopId } = req.body || {};
   const from = date || new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
   const { since, until } = posBounds(from, dateTo || from);
+  const sid = shopId || cfg.shopId;
   const p = { success_status: '1', success_record: 'updated_at',
     returned_record: 'success_record', returned_status: '5', user_type: 'assign',
     filter: {}, since, until, split_by: ['User.id'],
     select_fields: ['order_count', 'price', 'customer_count'],
     ...(params || {}) };
   for (const k of (drop || [])) delete p[k];
-  const url = `${POS_BASE}/shops/${cfg.shopId}/analytics/sale?access_token=${encodeURIComponent(cfg.chatToken)}`;
+  const url = `${POS_BASE}/shops/${sid}/analytics/sale?access_token=${encodeURIComponent(cfg.chatToken)}`;
   try {
     const r = await fetch(url, { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
