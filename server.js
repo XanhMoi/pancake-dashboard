@@ -1020,6 +1020,23 @@ app.post('/api/admin/pos-probe', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Debug: GET tuỳ ý trên POS API bằng token đã lưu (vd path: 'shops') ───────
+app.post('/api/admin/pos-get', requireAdmin, async (req, res) => {
+  const cfg = readJSON(CONFIG_FILE, {});
+  if (!cfg.chatToken) return res.status(400).json({ error: 'Chưa cấu hình token' });
+  const { path: p, query } = req.body || {};
+  if (!p || /[^a-zA-Z0-9_\/-]/.test(p)) return res.status(400).json({ error: 'path không hợp lệ' });
+  const q = new URLSearchParams({ access_token: cfg.chatToken, ...(query || {}) });
+  try {
+    const r = await fetch(`${POS_BASE}/${p}?${q}`, { signal: AbortSignal.timeout(20000) });
+    const text = await r.text();
+    let json; try { json = JSON.parse(text); } catch { json = text.slice(0, 3000); }
+    res.json({ httpStatus: r.status, body: json });
+  } catch (err) {
+    res.json({ httpStatus: null, error: err.message });
+  }
+});
+
 // ─── Debug: test POS token directly — trả về lỗi thật từ Pancake ─────────────
 app.post('/api/test-pos', requireAdmin, async (req, res) => {
   const { posToken, shopId } = req.body || {};
