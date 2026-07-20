@@ -838,6 +838,15 @@ async function loadKenhLive() {
       body: JSON.stringify({ since, until, liveNames: LIVE_NAMES }) });
     const j = await r.json();
     if (!j.ok) { sec.classList.add('hidden'); return; }
+    if (j.partial) {
+      // Doanh thu Nhóm Live chưa về (Pancake chậm/lỗi tạm) → KHÔNG hiện số sai (−ads),
+      // giữ nguyên bảng cũ nếu có + báo nhẹ + tự thử lại tối đa 3 lần rồi để nhịp 30s lo.
+      sec.classList.remove('hidden');
+      $('#kenhlive-note').textContent = '⏳ Đang tải doanh thu Nhóm Live (Pancake hơi chậm), sẽ tự cập nhật…';
+      if ((S._klRetry || 0) < 1) { S._klRetry = (S._klRetry || 0) + 1; setTimeout(loadKenhLive, 6000); }
+      return;
+    }
+    S._klRetry = 0;
     renderKenhLive(j);
   } catch (_) { sec.classList.add('hidden'); }
 }

@@ -954,9 +954,10 @@ app.post('/api/kenh-live', requireAuth, async (req, res) => {
   try {
     const revFrom = nextDay(since), revTo = nextDay(until);   // doanh thu lệch +1 ngày
     const liveNorm = new Set((liveNames || []).map(normViName));
+    let revFailed = false;
     const [adsByDay, revByDay] = await Promise.all([
       fetchLiveDaiSpendByDay(since, until).catch(e => { console.error('LiveDai ads:', e.message); return null; }),
-      fetchLiveTeamRevByDay(token, shopId, revFrom, revTo, liveNorm).catch(e => { console.error('Live rev:', e.message); return {}; }),
+      fetchLiveTeamRevByDay(token, shopId, revFrom, revTo, liveNorm).catch(e => { revFailed = true; console.error('Live rev:', e.message); return {}; }),
     ]);
 
     const rows = dayList(since, until).map(adDay => {
@@ -982,9 +983,13 @@ app.post('/api/kenh-live', requireAuth, async (req, res) => {
       mer: sum.ads > 0 ? sum.doanhThu / sum.ads : null,
     };
 
+    // Doanh thu rỗng (không ngày nào có số) hoặc fetch lỗi = KHÔNG đáng tin → đừng cache
+    const revEmpty = Object.keys(revByDay).length === 0;
+    const partial = revFailed || revEmpty;
     const result = { ok: true, rows, total, adRange: [since, until], revRange: [revFrom, revTo],
-      hasFbToken: !!FB_TOKEN };
-    klCache.set(cacheKey, { at: Date.now(), data: result });
+      hasFbToken: !!FB_TOKEN, partial };
+    // CHỈ cache khi lấy đủ doanh thu → lỗi transient KHÔNG bị "đóng băng" 10 phút, lần sau tự thử lại
+    if (!partial) klCache.set(cacheKey, { at: Date.now(), data: result });
     res.json(result);
   } catch (err) {
     console.error('kenh-live error:', err.message);
