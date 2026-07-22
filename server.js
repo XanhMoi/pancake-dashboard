@@ -1096,24 +1096,39 @@ app.post('/api/pages', requireAdmin, async (req, res) => {
 const wpPairs = new Map();   // code -> { u, exp }
 function cleanPairs() { const now = Date.now(); for (const [k, v] of wpPairs) if (v.exp < now) wpPairs.delete(k); }
 
-app.post('/api/admin/wp-pair', requireAdmin, (req, res) => {
-  cleanPairs();
-  const code = crypto.randomBytes(24).toString('base64url');
-  wpPairs.set(code, { u: req.user.u, exp: Date.now() + 10 * 60 * 1000 });   // 10 phút
+function baseUrl(req) {
   const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
   const host = req.headers['x-forwarded-host'] || req.headers.host;
-  res.json({ url: `${proto}://${host}/wp?code=${code}`, expiresInMin: 10 });
+  return `${proto}://${host}`;
+}
+
+// Tạo/lấy LINK CỐ ĐỊNH (không hết hạn) — key lưu ở config.json (Railway Volume).
+// Dán 1 lần vào Lively; mỗi lần tải lại /wp tự đăng nhập + vào bản kiosk sạch.
+app.post('/api/admin/wp-pair', requireAdmin, (req, res) => {
+  const cfg = readJSON(CONFIG_FILE, {});
+  if (req.body && req.body.reset) cfg.wpKey = '';              // đổi link (huỷ link cũ)
+  if (!cfg.wpKey) cfg.wpKey = crypto.randomBytes(24).toString('base64url');
+  cfg.wpUser = req.user.u;                                      // link chạy với quyền admin này
+  writeJSON(CONFIG_FILE, cfg);
+  res.json({ url: `${baseUrl(req)}/wp?key=${cfg.wpKey}`, stable: true });
 });
 
 app.get('/wp', (req, res) => {
-  cleanPairs();
-  const p = wpPairs.get(String(req.query.code || ''));
-  if (!p || p.exp < Date.now()) return res.redirect('/?wp=expired');
-  wpPairs.delete(String(req.query.code || ''));   // dùng-một-lần
-  const user = findUser(p.u);
+  const cfg = readJSON(CONFIG_FILE, {});
+  const key = String(req.query.key || '');
+  let uname = null;
+  if (key && cfg.wpKey && key === cfg.wpKey) {
+    uname = cfg.wpUser;                                         // link cố định
+  } else {
+    cleanPairs();                                              // tương thích link cũ dùng-một-lần
+    const code = String(req.query.code || '');
+    const p = wpPairs.get(code);
+    if (p && p.exp >= Date.now()) { wpPairs.delete(code); uname = p.u; }
+  }
+  const user = uname && findUser(uname);
   if (!user) return res.redirect('/?wp=expired');
-  setSessCookie(res, user);                        // cookie 30 ngày
-  res.redirect('/?kiosk=1');
+  setSessCookie(res, user);                                     // đăng nhập (rolling 400 ngày)
+  res.redirect('/?kiosk=1');                                    // luôn vào bản kiosk sạch
 });
 
 app.listen(PORT, '0.0.0.0', () => {

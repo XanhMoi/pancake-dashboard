@@ -1019,8 +1019,8 @@ async function makeWpPair() {
     const r = await fetch('/api/admin/wp-pair', { method: 'POST' });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Lỗi');
-    out.innerHTML = '<div class="fld" style="margin-bottom:6px;"><label>Link dán vào Lively (dùng-một-lần, hết hạn sau '
-      + j.expiresInMin + ' phút):</label><input id="wp-pair-url" type="text" readonly style="font-size:12px"></div>'
+    out.innerHTML = '<div class="fld" style="margin-bottom:6px;"><label>Link CỐ ĐỊNH — dán vào Lively 1 lần, dùng mãi (tự đăng nhập + bản sạch):</label>'
+      + '<input id="wp-pair-url" type="text" readonly style="font-size:12px"></div>'
       + '<button class="btn ghost sm" id="b-wp-copy">📋 Copy link</button>';
     const el = $('#wp-pair-url'); el.value = j.url; el.focus(); el.select();
     $('#b-wp-copy').onclick = () => { el.select(); (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject())
