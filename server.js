@@ -98,9 +98,10 @@ function currentUser(req) {
   return user;
 }
 function setSessCookie(res, user) {
-  res.setHeader('Set-Cookie', `pd_sess=${signSess(user.u, user.sv || 1)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}; SameSite=Lax`);
+  // 400 ngày = trần tối đa trình duyệt cho phép. Được gia hạn mỗi request auth (rolling) → không hết hạn khi còn dùng.
+  res.setHeader('Set-Cookie', `pd_sess=${signSess(user.u, user.sv || 1)}; HttpOnly; Path=/; Max-Age=${400 * 24 * 3600}; SameSite=Lax`);
 }
-function requireAuth(req, res, next) { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Chưa đăng nhập' }); req.user = u; next(); }
+function requireAuth(req, res, next) { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Chưa đăng nhập' }); req.user = u; setSessCookie(res, u); next(); }
 function requireAdmin(req, res, next) { const u = currentUser(req); if (!u || u.role !== 'admin') return res.status(403).json({ error: 'Chỉ admin' }); req.user = u; next(); }
 
 // ─── Đăng nhập / phiên ───
@@ -120,6 +121,7 @@ app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', 'pd_sess=; H
 app.get('/api/me', (req, res) => {
   const user = currentUser(req);
   if (!user) return res.json({ auth: false });
+  setSessCookie(res, user);   // gia hạn cookie mỗi lần mở nền
   const cfg = readJSON(CONFIG_FILE, {});
   res.json({ auth: true, u: user.u, role: user.role, perms: permsOf(user),
     configured: !!(cfg.chatToken && (cfg.pageIds || []).length) });
