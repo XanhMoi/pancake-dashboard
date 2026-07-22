@@ -1088,6 +1088,32 @@ app.post('/api/pages', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Ghép nối HÌNH NỀN (Lively wallpaper) ────────────────────────────────────
+// Admin bấm "Tạo link hình nền" → sinh mã dùng-một-lần (10'). Dán URL /wp?code=…
+// vào Lively → WebView2 mở, server set cookie 30 ngày → khỏi gõ mật khẩu trên nền.
+const wpPairs = new Map();   // code -> { u, exp }
+function cleanPairs() { const now = Date.now(); for (const [k, v] of wpPairs) if (v.exp < now) wpPairs.delete(k); }
+
+app.post('/api/admin/wp-pair', requireAdmin, (req, res) => {
+  cleanPairs();
+  const code = crypto.randomBytes(24).toString('base64url');
+  wpPairs.set(code, { u: req.user.u, exp: Date.now() + 10 * 60 * 1000 });   // 10 phút
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  res.json({ url: `${proto}://${host}/wp?code=${code}`, expiresInMin: 10 });
+});
+
+app.get('/wp', (req, res) => {
+  cleanPairs();
+  const p = wpPairs.get(String(req.query.code || ''));
+  if (!p || p.exp < Date.now()) return res.redirect('/?wp=expired');
+  wpPairs.delete(String(req.query.code || ''));   // dùng-một-lần
+  const user = findUser(p.u);
+  if (!user) return res.redirect('/?wp=expired');
+  setSessCookie(res, user);                        // cookie 30 ngày
+  res.redirect('/?kiosk=1');
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   const ip = Object.values(require('os').networkInterfaces())
     .flat()

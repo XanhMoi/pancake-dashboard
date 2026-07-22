@@ -136,6 +136,13 @@
   .chip { display: inline-block; background: var(--card2); border: 1px solid var(--line); border-radius: 20px; padding: 1px 9px; font-size: 11px; margin: 1px 2px; color: var(--mut); }
   .xbtn { background: transparent; border: 1px solid var(--line); color: var(--red); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12px; }
   .xbtn:hover { filter: brightness(1.2); }
+  /* ─── Chế độ HÌNH NỀN (kiosk): ẩn nút điều khiển, chỉ hiện số liệu ─── */
+  body.kiosk .dater,
+  body.kiosk #b-admin-open,
+  body.kiosk #b-reconf,
+  body.kiosk #b-logout,
+  body.kiosk #view-tabs { display: none !important; }
+  body.kiosk { cursor: default; }
 </style>
 </head>
 <body>
@@ -193,6 +200,16 @@
   <p class="sub">Anh là admin. Tạo tài khoản cho nhân viên và tick các mục họ được xem. Chỉnh xong bấm <b>Lưu</b> ở từng dòng.</p>
 
   <div id="admin-list" style="margin-bottom:8px;"></div>
+
+  <!-- Ghép nối hình nền động (Lively) -->
+  <div style="margin:18px 0 8px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--card2);">
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <h3 style="font-size:15px; margin:0;">🖼️ Hình nền động</h3>
+      <button class="xbtn" id="b-wp-pair" style="color:var(--accent)">Tạo link hình nền</button>
+      <span class="muted" style="font-size:12px;">Dán link vào Lively — tự đăng nhập, dùng 30 ngày.</span>
+    </div>
+    <div id="wp-pair-out" style="margin-top:10px;"></div>
+  </div>
 
   <div style="display:flex; align-items:center; gap:12px; margin:20px 0 8px;">
     <h3 style="font-size:15px; margin:0;">📜 Đăng nhập gần đây</h3>
@@ -996,6 +1013,21 @@ $('#b-admin-open').onclick = openAdmin;
 $('#b-logout-all').onclick = logoutAll;
 $('#b-adduser').onclick = addUser;
 $('#b-admin-back').onclick = () => enterDash();
+async function makeWpPair() {
+  const out = $('#wp-pair-out'); out.textContent = 'Đang tạo…';
+  try {
+    const r = await fetch('/api/admin/wp-pair', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Lỗi');
+    out.innerHTML = '<div class="fld" style="margin-bottom:6px;"><label>Link dán vào Lively (dùng-một-lần, hết hạn sau '
+      + j.expiresInMin + ' phút):</label><input id="wp-pair-url" type="text" readonly style="font-size:12px"></div>'
+      + '<button class="btn ghost sm" id="b-wp-copy">📋 Copy link</button>';
+    const el = $('#wp-pair-url'); el.value = j.url; el.focus(); el.select();
+    $('#b-wp-copy').onclick = () => { el.select(); (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject())
+      .then(() => { $('#b-wp-copy').textContent = '✓ Đã copy'; }, () => { document.execCommand('copy'); $('#b-wp-copy').textContent = '✓ Đã copy'; }); };
+  } catch (e) { out.textContent = '⚠️ ' + e.message; }
+}
+$('#b-wp-pair').onclick = makeWpPair;
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0,10);
@@ -1022,6 +1054,7 @@ document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
 });
 
 // ─── Boot ───
+if (new URLSearchParams(location.search).has('kiosk')) document.body.classList.add('kiosk');
 boot();
 </script>
 </body>
