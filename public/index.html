@@ -1072,7 +1072,7 @@ function startAutoScroll() {
 // ─── Boot ───
 if (new URLSearchParams(location.search).has('kiosk')) {
   document.body.classList.add('kiosk');
-  if (new URLSearchParams(location.search).get('scroll') !== '0') startAutoScroll();   // tắt bằng ?scroll=0
+  if (new URLSearchParams(location.search).get('scroll') === '1') startAutoScroll();   // MẶC ĐỊNH TẮT — chỉ tự cuộn khi thêm ?scroll=1
 }
 boot();
 </script>
