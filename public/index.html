@@ -1053,8 +1053,27 @@ document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
   if (S.last) render(S.last);
 });
 
+// ─── Tự cuộn (auto-scroll) cho hình nền — chạy trong trang, không cần Lively forward chuột ───
+function startAutoScroll() {
+  let dir = 1, paused = false;
+  const SPEED = 1.4;      // px mỗi nhịp (~47px/giây) — chỉnh to/nhỏ nếu muốn nhanh/chậm
+  const PAUSE = 3000;     // dừng nghỉ 3s ở đầu và cuối
+  setInterval(() => {
+    if (paused) return;
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    if (max <= 4) return;                       // trang ngắn, không có gì để cuộn
+    window.scrollBy(0, dir * SPEED);
+    const y = window.scrollY;
+    if (dir > 0 && y >= max - 1) { paused = true; setTimeout(() => { dir = -1; paused = false; }, PAUSE); }
+    else if (dir < 0 && y <= 1) { paused = true; setTimeout(() => { dir = 1; paused = false; }, PAUSE); }
+  }, 30);
+}
+
 // ─── Boot ───
-if (new URLSearchParams(location.search).has('kiosk')) document.body.classList.add('kiosk');
+if (new URLSearchParams(location.search).has('kiosk')) {
+  document.body.classList.add('kiosk');
+  if (new URLSearchParams(location.search).get('scroll') !== '0') startAutoScroll();   // tắt bằng ?scroll=0
+}
 boot();
 </script>
 </body>
