@@ -46,7 +46,9 @@ async function pcFetch(url, opts = {}, tries = 3, baseDelay = 400) {
       }
       return res;
     } catch (err) {
-      lastErr = err;                       // lỗi mạng/timeout → thử lại
+      // Timeout/abort → thử lại VÔ ÍCH (truy vấn vốn đã chậm) → ném luôn cho nhanh
+      if (err && (err.name === 'AbortError' || err.name === 'TimeoutError')) throw err;
+      lastErr = err;                       // lỗi mạng khác → thử lại
       if (i < tries - 1) { await new Promise(r => setTimeout(r, baseDelay * (i + 1))); continue; }
       throw err;
     }
@@ -258,7 +260,7 @@ async function callEngApi(chatToken, pageIdsCsv, from, to) {
     + `&date_range=${encodeURIComponent(chatDateRange(from, to))}`;
   const fd = new FormData();
   fd.append('page_ids', pageIdsCsv);
-  const res = await pcFetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) });
+  const res = await pcFetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`customer_engagements HTTP ${res.status}`);
   return res.json();
 }
@@ -346,7 +348,7 @@ async function callUserApi(chatToken, pageIdsCsv, from, to) {
     + `&select_fields=${encodeURIComponent(JSON.stringify(USER_SELECT))}`;
   const fd = new FormData();
   fd.append('page_ids', pageIdsCsv);
-  const res = await pcFetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) });
+  const res = await pcFetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`statistics/user HTTP ${res.status}`);
   return res.json();
 }
@@ -423,7 +425,7 @@ async function fetchPosSale(posToken, shopId, pageIds, from, to) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) throw new Error(`analytics/sale HTTP ${res.status}`);
   return res.json();
@@ -451,7 +453,7 @@ async function fetchPosOverview(posToken, shopId, from, to) {
     split_by: ['Time.hour'], select_fields: POS_OV_FIELDS } };
   const res = await pcFetch(saleUrl, { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`POS overview HTTP ${res.status}`);
   const sale = await res.json();
 
@@ -549,7 +551,7 @@ async function callSaleSplit(posToken, shopId, since, until, splitBy) {
   } };
   const res = await pcFetch(url, { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`sale ${splitBy} HTTP ${res.status}`);
   return res.json();
 }
@@ -877,7 +879,7 @@ async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
     returned_status: '5', user_type: 'assign', filter: {}, since, until,
     split_by: ['User.id', 'Time.day'], select_fields: POS_BRK_FIELDS } };
   const res = await pcFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+    body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`sale per-day HTTP ${res.status}`);
   const j = await res.json();
   const rows = (j?.data?.[0]?.data) || j?.data || [];
@@ -897,6 +899,9 @@ async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
 
 // ─── API ───────────────────────────────────────────────────────────────────────
 
+// Cache /api/metrics cho khoảng NHIỀU NGÀY: Pancake mất 7-25s cho khoảng rộng mà
+// dashboard refresh 30s → không cache sẽ chồng lệnh liên tục. Khoảng 1 ngày giữ realtime.
+const metricsCache = new Map();
 app.post('/api/metrics', requireAuth, async (req, res) => {
   const { date, dateTo } = req.body || {};
   const cfg = readJSON(CONFIG_FILE, {});
@@ -910,6 +915,13 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
   // normalise: make sure from <= to
   if (toStr < fromStr) { const t = fromStr; fromStr = toStr; toStr = t; }
   const dateStr = fromStr === toStr ? fromStr : `${fromStr}…${toStr}`;
+
+  const wideRange = fromStr !== toStr;                       // nhiều ngày = truy vấn nặng
+  const mKey = `${fromStr}_${toStr}`;
+  if (wideRange) {
+    const c = metricsCache.get(mKey);
+    if (c && Date.now() - c.at < 180000) return res.json(c.data);   // dùng lại 3 phút
+  }
 
   try {
     const engP = fetchEngagements(chatToken, pageIds, fromStr, toStr);
@@ -959,6 +971,9 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `
       + `${out.summary.orderTotal} đơn${out.summary.posOk ? ' (POS)' : ''}`);
 
+    // CHỈ cache khi data ĐỦ (POS ok + có breakdowns) — đừng đóng băng trạng thái hỏng
+    const good = !!(out.summary && out.summary.posOk) && !!out.posBreakdowns && !!out.posOverview;
+    if (wideRange && good) metricsCache.set(mKey, { at: Date.now(), data: out });
     res.json(out);
   } catch (err) {
     console.error('metrics error:', err.message);
