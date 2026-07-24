@@ -29,6 +29,31 @@ const PORT = process.env.PORT || 3000;
 const CHAT_BASE = 'https://pancake.vn/api/v1';
 const POS_BASE = 'https://pos.pancake.vn/api/v1';
 
+// ─── Gọi Pancake CÓ THỬ LẠI ───────────────────────────────────────────────────
+// API Pancake chập chờn: đo thực tế ~25% lượt trả HTTP 500 rồi lần sau lại OK.
+// Mỗi lần load dashboard gọi 4-5 lệnh POS → chỉ 1 lệnh dính là mất "đơn chốt"
+// (hiện "Chưa kết nối POS") hoặc mất nhóm sale (0đ). Thử lại 3 lần là hết.
+async function pcFetch(url, opts = {}, tries = 3, baseDelay = 400) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, opts);
+      if (res.ok) return res;
+      // 5xx = lỗi tạm phía Pancake → thử lại; 4xx = sai request → trả luôn
+      if (res.status >= 500 && i < tries - 1) {
+        await new Promise(r => setTimeout(r, baseDelay * (i + 1)));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;                       // lỗi mạng/timeout → thử lại
+      if (i < tries - 1) { await new Promise(r => setTimeout(r, baseDelay * (i + 1))); continue; }
+      throw err;
+    }
+  }
+  throw lastErr || new Error('pcFetch failed');
+}
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -233,7 +258,7 @@ async function callEngApi(chatToken, pageIdsCsv, from, to) {
     + `&date_range=${encodeURIComponent(chatDateRange(from, to))}`;
   const fd = new FormData();
   fd.append('page_ids', pageIdsCsv);
-  const res = await fetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) });
+  const res = await pcFetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`customer_engagements HTTP ${res.status}`);
   return res.json();
 }
@@ -321,7 +346,7 @@ async function callUserApi(chatToken, pageIdsCsv, from, to) {
     + `&select_fields=${encodeURIComponent(JSON.stringify(USER_SELECT))}`;
   const fd = new FormData();
   fd.append('page_ids', pageIdsCsv);
-  const res = await fetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) });
+  const res = await pcFetch(url, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`statistics/user HTTP ${res.status}`);
   return res.json();
 }
@@ -394,7 +419,7 @@ async function fetchPosSale(posToken, shopId, pageIds, from, to) {
     },
   };
 
-  const res = await fetch(url, {
+  const res = await pcFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -424,7 +449,7 @@ async function fetchPosOverview(posToken, shopId, from, to) {
   const saleUrl = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
   const body = { params: { ...base, filter: {}, since, until,
     split_by: ['Time.hour'], select_fields: POS_OV_FIELDS } };
-  const res = await fetch(saleUrl, { method: 'POST',
+  const res = await pcFetch(saleUrl, { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`POS overview HTTP ${res.status}`);
@@ -435,7 +460,7 @@ async function fetchPosOverview(posToken, shopId, from, to) {
   try {
     const q = new URLSearchParams({ access_token: posToken, ...base,
       filter: '{}', since, until });
-    const ir = await fetch(`${POS_BASE}/shops/${shopId}/analytics/total_inventory?${q}`,
+    const ir = await pcFetch(`${POS_BASE}/shops/${shopId}/analytics/total_inventory?${q}`,
       { signal: AbortSignal.timeout(15000) });
     if (ir.ok) { const ij = await ir.json(); inventory = ij.data || null; }
   } catch (_) { /* inventory optional */ }
@@ -522,7 +547,7 @@ async function callSaleSplit(posToken, shopId, since, until, splitBy) {
       { since: shiftIso(since, 7), until: shiftIso(until, 7) },
     ],
   } };
-  const res = await fetch(url, { method: 'POST',
+  const res = await pcFetch(url, { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`sale ${splitBy} HTTP ${res.status}`);
@@ -851,7 +876,7 @@ async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
     success_status: '1', success_record: 'updated_at', returned_record: 'success_record',
     returned_status: '5', user_type: 'assign', filter: {}, since, until,
     split_by: ['User.id', 'Time.day'], select_fields: POS_BRK_FIELDS } };
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  const res = await pcFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
   if (!res.ok) throw new Error(`sale per-day HTTP ${res.status}`);
   const j = await res.json();
