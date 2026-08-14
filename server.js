@@ -403,7 +403,9 @@ async function fetchPosSale(posToken, shopId, pageIds, from, to) {
   const body = {
     params: {
       success_status: '1',
-      success_record: 'updated_at',
+      // Đếm đơn theo NGÀY TẠO (inserted_at) để khớp Pancake "Tổng quan".
+      // 'updated_at' kéo nhầm đơn tạo ngày khác nhưng cập nhật trong ngày → phồng ~8%.
+      success_record: 'inserted_at',
       returned_record: 'success_record',
       returned_status: '5',
       user_type: 'assign',
@@ -445,7 +447,7 @@ const POS_OV_FIELDS = ['order_count', 'total_order_count', 'canceled_order_count
 
 async function fetchPosOverview(posToken, shopId, from, to) {
   const { since, until } = posBounds(from, to);
-  const base = { success_status: '1', success_record: 'updated_at',
+  const base = { success_status: '1', success_record: 'inserted_at',
     returned_record: 'success_record', returned_status: '5', user_type: 'assign' };
 
   const saleUrl = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
@@ -540,7 +542,7 @@ function shiftIso(iso, days) {
 async function callSaleSplit(posToken, shopId, since, until, splitBy) {
   const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
   const body = { params: {
-    success_status: '1', success_record: 'updated_at',
+    success_status: '1', success_record: 'inserted_at',
     returned_record: 'success_record', returned_status: '5',
     user_type: 'assign', filter: {}, since, until,
     split_by: splitBy, select_fields: POS_BRK_FIELDS,
@@ -875,7 +877,7 @@ async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
   const { since, until } = posBounds(from, to);
   const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
   const body = { params: {
-    success_status: '1', success_record: 'updated_at', returned_record: 'success_record',
+    success_status: '1', success_record: 'inserted_at', returned_record: 'success_record',
     returned_status: '5', user_type: 'assign', filter: {}, since, until,
     split_by: ['User.id', 'Time.day'], select_fields: POS_BRK_FIELDS } };
   const res = await pcFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1049,7 +1051,7 @@ app.post('/api/admin/pos-probe', requireAdmin, async (req, res) => {
   const from = date || new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
   const { since, until } = posBounds(from, dateTo || from);
   const sid = shopId || cfg.shopId;
-  const p = { success_status: '1', success_record: 'updated_at',
+  const p = { success_status: '1', success_record: 'inserted_at',
     returned_record: 'success_record', returned_status: '5', user_type: 'assign',
     filter: {}, since, until, split_by: ['User.id'],
     select_fields: ['order_count', 'price', 'customer_count'],
@@ -1096,7 +1098,7 @@ app.post('/api/test-pos', requireAdmin, async (req, res) => {
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ params: { success_status: '1', success_record: 'updated_at',
+      body: JSON.stringify({ params: { success_status: '1', success_record: 'inserted_at',
         returned_record: 'success_record', returned_status: '5', user_type: 'assign',
         filter: {}, since, until, split_by: ['Time.hour'], select_fields: ['order_count'] } }),
       signal: AbortSignal.timeout(15000),
