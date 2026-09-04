@@ -201,12 +201,16 @@ app.post('/api/admin/users/delete', requireAdmin, (req, res) => {
 // ─── Admin · cấu hình kết nối Pancake (token lưu server, KHÔNG trả token về client) ───
 app.get('/api/admin/config', requireAdmin, (req, res) => {
   const cfg = readJSON(CONFIG_FILE, {});
-  res.json({ shopId: cfg.shopId || '', pageIds: cfg.pageIds || [], pages: cfg.pages || [], hasToken: !!cfg.chatToken });
+  res.json({ shopId: cfg.shopId || '', pageIds: cfg.pageIds || [], pages: cfg.pages || [],
+    hasToken: !!cfg.chatToken,
+    hasPosKey: !!(process.env.PANCAKE_API_KEY || cfg.posApiKey),
+    posKeyFromEnv: !!process.env.PANCAKE_API_KEY });
 });
 app.post('/api/admin/config', requireAdmin, (req, res) => {
-  const { chatToken, shopId, pageIds, pages } = req.body || {};
+  const { chatToken, posApiKey, shopId, pageIds, pages } = req.body || {};
   const cfg = readJSON(CONFIG_FILE, {});
   if (chatToken) cfg.chatToken = chatToken;   // chỉ ghi đè khi có token mới
+  if (posApiKey) cfg.posApiKey = String(posApiKey).trim();   // api_key POS vĩnh viễn (chỉ ghi khi có)
   if (shopId != null) cfg.shopId = shopId;
   if (pageIds != null) cfg.pageIds = pageIds;
   if (pages != null) cfg.pages = pages;
@@ -393,11 +397,22 @@ async function fetchUserStats(chatToken, pageIds, from, to) {
   return mergeUserStats(ok);
 }
 
+// ─── POS auth: ưu tiên api_key VĨNH VIỄN (không hết hạn) ───────────────────────
+// Mọi lệnh POS (analytics/sale, total_inventory) nên đi bằng api_key POS — khoá này
+// KHÔNG bao giờ hết hạn. Chỉ khi thiếu api_key mới rơi về token session (chatToken),
+// vốn hay hết hạn → đó là GỐC của lỗi "Chưa kết nối POS" lặp đi lặp lại.
+// LƯU Ý: api_key POS phải truyền qua ?api_key=  (KHÔNG phải ?access_token=).
+function posApiKey() { const cfg = readJSON(CONFIG_FILE, {}); return process.env.PANCAKE_API_KEY || cfg.posApiKey || ''; }
+function posAuthQS(chatToken) {
+  const key = posApiKey();
+  return key ? `api_key=${encodeURIComponent(key)}`
+             : `access_token=${encodeURIComponent(chatToken || '')}`;
+}
+
 // ─── Pancake POS: analytics/sale (order source of truth) ───────────────────────
 
 async function fetchPosSale(posToken, shopId, pageIds, from, to) {
-  const url = `${POS_BASE}/shops/${shopId}/analytics/sale`
-    + `?access_token=${encodeURIComponent(posToken)}`;
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
   const { since, until } = posBounds(from, to);
 
   const body = {
@@ -450,7 +465,7 @@ async function fetchPosOverview(posToken, shopId, from, to) {
   const base = { success_status: '1', success_record: 'inserted_at',
     returned_record: 'success_record', returned_status: '5', user_type: 'assign' };
 
-  const saleUrl = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
+  const saleUrl = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
   const body = { params: { ...base, filter: {}, since, until,
     split_by: ['Time.hour'], select_fields: POS_OV_FIELDS } };
   const res = await pcFetch(saleUrl, { method: 'POST',
@@ -462,9 +477,8 @@ async function fetchPosOverview(posToken, shopId, from, to) {
   // Inventory ("Có thể bán") — snapshot, but pass same params to match POS UI.
   let inventory = null;
   try {
-    const q = new URLSearchParams({ access_token: posToken, ...base,
-      filter: '{}', since, until });
-    const ir = await pcFetch(`${POS_BASE}/shops/${shopId}/analytics/total_inventory?${q}`,
+    const q = new URLSearchParams({ ...base, filter: '{}', since, until });
+    const ir = await pcFetch(`${POS_BASE}/shops/${shopId}/analytics/total_inventory?${posAuthQS(posToken)}&${q}`,
       { signal: AbortSignal.timeout(15000) });
     if (ir.ok) { const ij = await ir.json(); inventory = ij.data || null; }
   } catch (_) { /* inventory optional */ }
@@ -540,7 +554,7 @@ function shiftIso(iso, days) {
 }
 
 async function callSaleSplit(posToken, shopId, since, until, splitBy) {
-  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
   const body = { params: {
     success_status: '1', success_record: 'inserted_at',
     returned_record: 'success_record', returned_status: '5',
@@ -875,7 +889,7 @@ async function fetchLiveDaiSpendByDay(from, to) {
 // Doanh thu/LN/đơn Nhóm Live theo từng ngày: { 'YYYY-MM-DD': {doanhThu,loiNhuan,donChot} }
 async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
   const { since, until } = posBounds(from, to);
-  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
   const body = { params: {
     success_status: '1', success_record: 'inserted_at', returned_record: 'success_record',
     returned_status: '5', user_type: 'assign', filter: {}, since, until,
@@ -990,7 +1004,7 @@ app.post('/api/kenh-live', requireAuth, async (req, res) => {
   const { since, until, liveNames } = req.body || {};
   const cfg = readJSON(CONFIG_FILE, {});
   const token = cfg.chatToken, shopId = cfg.shopId;
-  if (!token || !shopId) return res.status(400).json({ error: 'Admin chưa cấu hình kết nối Pancake' });
+  if ((!token && !posApiKey()) || !shopId) return res.status(400).json({ error: 'Admin chưa cấu hình kết nối Pancake' });
   if (!since || !until) return res.status(400).json({ error: 'Thiếu khoảng ngày' });
   const cacheKey = `${shopId}_${since}_${until}`;
   const cached = klCache.get(cacheKey);
@@ -1057,7 +1071,7 @@ app.post('/api/admin/pos-probe', requireAdmin, async (req, res) => {
     select_fields: ['order_count', 'price', 'customer_count'],
     ...(params || {}) };
   for (const k of (drop || [])) delete p[k];
-  const url = `${POS_BASE}/shops/${sid}/analytics/sale?access_token=${encodeURIComponent(cfg.chatToken)}`;
+  const url = `${POS_BASE}/shops/${sid}/analytics/sale?${posAuthQS(cfg.chatToken)}`;
   try {
     const r = await fetch(url, { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1076,9 +1090,9 @@ app.post('/api/admin/pos-get', requireAdmin, async (req, res) => {
   if (!cfg.chatToken) return res.status(400).json({ error: 'Chưa cấu hình token' });
   const { path: p, query } = req.body || {};
   if (!p || /[^a-zA-Z0-9_\/-]/.test(p)) return res.status(400).json({ error: 'path không hợp lệ' });
-  const q = new URLSearchParams({ access_token: cfg.chatToken, ...(query || {}) });
+  const q = new URLSearchParams({ ...(query || {}) });
   try {
-    const r = await fetch(`${POS_BASE}/${p}?${q}`, { signal: AbortSignal.timeout(20000) });
+    const r = await fetch(`${POS_BASE}/${p}?${posAuthQS(cfg.chatToken)}&${q}`, { signal: AbortSignal.timeout(20000) });
     const text = await r.text();
     let json; try { json = JSON.parse(text); } catch { json = text.slice(0, 3000); }
     res.json({ httpStatus: r.status, body: json });
@@ -1091,7 +1105,7 @@ app.post('/api/admin/pos-get', requireAdmin, async (req, res) => {
 app.post('/api/test-pos', requireAdmin, async (req, res) => {
   const { posToken, shopId } = req.body || {};
   if (!posToken || !shopId) return res.status(400).json({ error: 'Thiếu posToken / shopId' });
-  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?access_token=${encodeURIComponent(posToken)}`;
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
   const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
   const { since, until } = posBounds(today, today);
   try {

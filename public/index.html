@@ -169,13 +169,18 @@
   <p class="sub">Token lưu trên <b>server</b>, dùng chung cho mọi tài khoản. Chỉ admin cấu hình — nhân viên đăng nhập là xem, không cần token.</p>
 
   <div class="fld">
-    <label>Pancake access token <span class="muted">(1 JWT dùng cho cả Chat + POS)</span></label>
-    <input id="i-chat" type="password" placeholder="dán token mới; để trống nếu không đổi">
-    <div class="hint" id="i-chat-has"></div>
+    <label>POS api_key <span class="muted">(vĩnh viễn — đơn/doanh thu/lợi nhuận/Nhóm Live, KHÔNG hết hạn)</span></label>
+    <input id="i-poskey" type="password" placeholder="dán api_key POS; để trống nếu không đổi">
+    <div class="hint" id="i-poskey-has"></div>
   </div>
   <div class="fld">
     <label>Shop ID <span class="muted">(POS)</span></label>
     <input id="i-shop" type="text" placeholder="vd: 230277434">
+  </div>
+  <div class="fld">
+    <label>Pancake access token <span class="muted">(Chat: bảng nhân viên inbox/bình luận — có thể hết hạn, nhập lại khi bảng NV trống)</span></label>
+    <input id="i-chat" type="password" placeholder="dán token mới; để trống nếu không đổi">
+    <div class="hint" id="i-chat-has"></div>
   </div>
 
   <button class="btn ghost" id="b-loadpages">Tải danh sách Page</button>
@@ -258,7 +263,7 @@
     <button class="btn ghost" id="b-logout">Đăng xuất</button>
   </div>
 
-  <div id="poswarn" class="warn hidden">⚠️ Chưa kết nối POS — số đơn đang lấy tạm từ thống kê chat. Vào Cấu hình nhập Shop ID (VD: 230277434) để đồng bộ đơn chính xác 100%.</div>
+  <div id="poswarn" class="warn hidden">⚠️ Chưa kết nối POS — số đơn đang lấy tạm từ thống kê chat. Vào ⚙️ Cấu hình nhập <b>POS api_key</b> (vĩnh viễn) để đồng bộ đơn chính xác 100%.</div>
 
   <!-- Tab chuyển giữa 2 view -->
   <div class="tabs" id="view-tabs">
@@ -423,8 +428,11 @@ async function openSetup(first) {
   try {
     const c = await (await fetch('/api/admin/config')).json();
     S.shopId = c.shopId || ''; S.pages = c.pages || []; S.pageIds = c.pageIds || [];
-    $('#i-shop').value = S.shopId; $('#i-chat').value = '';
+    $('#i-shop').value = S.shopId; $('#i-chat').value = ''; $('#i-poskey').value = '';
     $('#i-chat-has').textContent = c.hasToken ? '✓ Đã có token trên server — để trống nếu không đổi.' : '⚠️ Chưa có token — nhập lần đầu.';
+    $('#i-poskey-has').textContent = c.hasPosKey
+      ? (c.posKeyFromEnv ? '✓ Đang dùng api_key từ biến môi trường Railway (PANCAKE_API_KEY).' : '✓ Đã có api_key trên server — để trống nếu không đổi.')
+      : '⚠️ Chưa có api_key — dán vào để POS không bao giờ chết vì token hết hạn.';
     if (S.pages.length) { renderPagebox(); $('#pages-wrap').classList.remove('hidden'); }
   } catch (_) {}
   $('#b-setup-back').classList.toggle('hidden', !!first);
@@ -456,6 +464,7 @@ async function saveConfig() {
   if (checks.length === 0) { err.textContent = 'Chọn ít nhất 1 page.'; return; }
   const body = { shopId: $('#i-shop').value.trim(), pageIds: checks, pages: S.pages };
   const tok = $('#i-chat').value.trim(); if (tok) body.chatToken = tok;
+  const pk = $('#i-poskey').value.trim(); if (pk) body.posApiKey = pk;
   $('#b-start').textContent = 'Đang lưu…';
   try {
     const r = await fetch('/api/admin/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
