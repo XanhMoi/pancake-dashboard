@@ -886,6 +886,19 @@ async function fetchLiveDaiSpendByDay(from, to) {
   return byDay;
 }
 
+// Tổng chi ads Live Đại (VND) trong khoảng [from,to] — cache 5' tránh gọi Meta mỗi 30s.
+// Nguồn cho thẻ "Chi ads Live Đại" + "LN sau ads" của block Nhóm Live.
+const _liveDaiSpendCache = new Map();
+async function fetchLiveDaiSpendTotal(from, to) {
+  if (!FB_TOKEN) return null;
+  const key = `${from}_${to}`, c = _liveDaiSpendCache.get(key);
+  if (c && Date.now() - c.at < 300000) return c.val;   // 5 phút
+  const byDay = await fetchLiveDaiSpendByDay(from, to);
+  const val = byDay ? Object.values(byDay).reduce((s, v) => s + (v || 0), 0) : null;
+  _liveDaiSpendCache.set(key, { at: Date.now(), val });
+  return val;
+}
+
 // Doanh thu/LN/đơn Nhóm Live theo từng ngày: { 'YYYY-MM-DD': {doanhThu,loiNhuan,donChot} }
 async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
   const { since, until } = posBounds(from, to);
@@ -970,18 +983,25 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
       console.error('AdSpend:', e.message);
       return null;
     });
+    // Chi ads Live Đại (chỉ campaign Live Đại) — để Nhóm Live tính lợi nhuận sau ads
+    const liveAdP = fetchLiveDaiSpendTotal(fromStr, toStr).catch(e => {
+      console.error('LiveDai spend:', e.message);
+      return null;
+    });
 
-    const [engRes, userStats, posRes, posOv, posBrk, adSpend] =
-      await Promise.all([engP, userP, posP, ovP, brkP, adP]);
+    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend] =
+      await Promise.all([engP, userP, posP, ovP, brkP, adP, liveAdP]);
     const out = buildMetrics(engRes, posRes, userStats);
     out.posOverview = buildPosOverview(posOv);
     out.posBreakdowns = buildPosBreakdowns(posBrk);
     out.adSpend = adSpend;
+    out.liveDaiAdSpend = liveDaiAdSpend;
 
     // ─── Lọc theo quyền: chỉ trả dữ liệu của mục user được xem ───
     if (!perms.pos && !perms.nhomSale) { out.posOverview = null; out.posBreakdowns = null; out.adSpend = null; }
     if (!perms.chat && !perms.nhomSale) { out.staffDetail = []; out.staff = []; }
     if (!perms.pos) out.adSpend = null;
+    if (!(perms.live || perms.pos)) out.liveDaiAdSpend = null;   // chi ads Live Đại: chỉ ai xem được Live/POS
 
     console.log(`[${new Date().toLocaleTimeString('vi-VN')}] ${dateStr} — `
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `
