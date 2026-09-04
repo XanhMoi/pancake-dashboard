@@ -804,14 +804,15 @@ function renderTeams(j) {
     const total = Math.max(TEAM_COUNT[t.team] || 0, t.members.size);
     const active = [...t.members.values()].filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt).length;
 
-    // Nhóm Live: trừ chi ads Live Đại (từ Meta) → lợi nhuận sau ads. Chỉ Nhóm Live mới có ads Live Đại.
+    // Nhóm Live: trừ chi ads Live Đại (LỆCH +1 NGÀY — ads ngày trước tạo doanh thu kỳ này) → LN sau ads.
     const liveAds = (t.team === 'Live') ? j.liveDaiAdSpend : null;
-    let adsKpis = '';
+    let adsKpis = '', adsNote = '';
     if (t.team === 'Live' && liveAds != null) {
       const lsa = t.loiNhuan - liveAds;
       const lsaPct = t.doanhThu > 0 ? (lsa / t.doanhThu) * 100 : 0;
       adsKpis = kpi('Chi ads Live Đại', money(liveAds))
         + kpi('LN sau ads', `<span${lsa < 0 ? ' style="color:#f87171"' : ''}>${money(lsa)}</span> <span class="muted">(${pct(lsaPct)})</span>`);
+      adsNote = `<div class="more">↔ Ads lệch +1 ngày: chi ads = Live Đại ngày trước (tạo ra doanh thu kỳ này)</div>`;
     }
 
     const mems = [...t.members.values()]
@@ -843,6 +844,7 @@ function renderTeams(j) {
         ${kpi('SĐT mang về', fmt(t.sdt))}
         ${kpi('SL bán', fmt(t.slBan))}
       </div>
+      ${adsNote}
       <table><thead><tr>
         <th style="text-align:left">Nhân viên</th><th>Doanh thu</th><th>Lợi nhuận</th><th>Đơn</th>
         <th>Tỉ lệ chốt</th><th>Tương tác</th><th>SĐT</th>

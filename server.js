@@ -226,6 +226,13 @@ function nextDay(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// "2026-05-30" -> "2026-05-29"
+function prevDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // "2026-05-29" -> "29/05/2026"
 function ddmmyyyy(dateStr) {
   const [y, m, d] = dateStr.split('-');
@@ -983,8 +990,9 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
       console.error('AdSpend:', e.message);
       return null;
     });
-    // Chi ads Live Đại (chỉ campaign Live Đại) — để Nhóm Live tính lợi nhuận sau ads
-    const liveAdP = fetchLiveDaiSpendTotal(fromStr, toStr).catch(e => {
+    // Chi ads Live Đại LỆCH +1 NGÀY: doanh thu Nhóm Live kỳ [from,to] do ads Live Đại
+    // NGÀY TRƯỚC tạo ra (sale lên đơn sau 1 ngày Live) → lấy ads [from-1, to-1].
+    const liveAdP = fetchLiveDaiSpendTotal(prevDay(fromStr), prevDay(toStr)).catch(e => {
       console.error('LiveDai spend:', e.message);
       return null;
     });
