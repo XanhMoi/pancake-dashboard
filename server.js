@@ -906,6 +906,32 @@ async function fetchLiveDaiSpendTotal(from, to) {
   return val;
 }
 
+// Tổng chi ads MESS (VND) = mọi campaign KHÔNG phải Live Đại — cùng kỳ, cache 5'.
+// Nguồn cho thẻ "Chi ads Mess" + "LN sau ads" của block Nhóm Tư vấn.
+const _messSpendCache = new Map();
+async function fetchMessSpendTotal(from, to) {
+  if (!FB_TOKEN) return null;
+  const key = `${from}_${to}`, c = _messSpendCache.get(key);
+  if (c && Date.now() - c.at < 300000) return c.val;   // 5 phút
+  const accounts = await getFbAccountsCached();
+  const timeRange = JSON.stringify({ since: from, until: to });
+  let mess = 0;
+  await Promise.all(accounts.map(async a => {
+    try {
+      const url = `${FB_GRAPH}/${a.id}/insights?level=campaign&fields=campaign_name,spend`
+        + `&time_range=${encodeURIComponent(timeRange)}&limit=500&access_token=${encodeURIComponent(FB_TOKEN)}`;
+      const rows = await fbGetAllPages(url);
+      for (const r of rows) {
+        if (isLiveDai(r.campaign_name)) continue;   // Mess = KHÔNG phải Live Đại
+        mess += toVnd(parseFloat(r.spend || 0), a.currency || 'VND');
+      }
+    } catch (_) { /* bỏ qua account lỗi */ }
+  }));
+  const val = Math.round(mess);
+  _messSpendCache.set(key, { at: Date.now(), val });
+  return val;
+}
+
 // Doanh thu/LN/đơn Nhóm Live theo từng ngày: { 'YYYY-MM-DD': {doanhThu,loiNhuan,donChot} }
 async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
   const { since, until } = posBounds(from, to);
@@ -996,20 +1022,27 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
       console.error('LiveDai spend:', e.message);
       return null;
     });
+    // Chi ads Mess (mọi campaign KHÔNG phải Live Đại) — CÙNG KỲ — cho Nhóm Tư vấn
+    const messP = fetchMessSpendTotal(fromStr, toStr).catch(e => {
+      console.error('Mess spend:', e.message);
+      return null;
+    });
 
-    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend] =
-      await Promise.all([engP, userP, posP, ovP, brkP, adP, liveAdP]);
+    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend, messAdSpend] =
+      await Promise.all([engP, userP, posP, ovP, brkP, adP, liveAdP, messP]);
     const out = buildMetrics(engRes, posRes, userStats);
     out.posOverview = buildPosOverview(posOv);
     out.posBreakdowns = buildPosBreakdowns(posBrk);
     out.adSpend = adSpend;
     out.liveDaiAdSpend = liveDaiAdSpend;
+    out.messAdSpend = messAdSpend;
 
     // ─── Lọc theo quyền: chỉ trả dữ liệu của mục user được xem ───
     if (!perms.pos && !perms.nhomSale) { out.posOverview = null; out.posBreakdowns = null; out.adSpend = null; }
     if (!perms.chat && !perms.nhomSale) { out.staffDetail = []; out.staff = []; }
     if (!perms.pos) out.adSpend = null;
     if (!(perms.live || perms.pos)) out.liveDaiAdSpend = null;   // chi ads Live Đại: chỉ ai xem được Live/POS
+    if (!(perms.nhomSale || perms.pos)) out.messAdSpend = null;  // chi ads Mess: chỉ ai xem được nhóm sale/POS
 
     console.log(`[${new Date().toLocaleTimeString('vi-VN')}] ${dateStr} — `
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `

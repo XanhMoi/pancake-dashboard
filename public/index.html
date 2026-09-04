@@ -804,15 +804,20 @@ function renderTeams(j) {
     const total = Math.max(TEAM_COUNT[t.team] || 0, t.members.size);
     const active = [...t.members.values()].filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt).length;
 
-    // Nhóm Live: trừ chi ads Live Đại (LỆCH +1 NGÀY — ads ngày trước tạo doanh thu kỳ này) → LN sau ads.
-    const liveAds = (t.team === 'Live') ? j.liveDaiAdSpend : null;
-    let adsKpis = '', adsNote = '';
-    if (t.team === 'Live' && liveAds != null) {
-      const lsa = t.loiNhuan - liveAds;
-      const lsaPct = t.doanhThu > 0 ? (lsa / t.doanhThu) * 100 : 0;
-      adsKpis = kpi('Chi ads Live Đại', money(liveAds))
-        + kpi('LN sau ads', `<span${lsa < 0 ? ' style="color:#f87171"' : ''}>${money(lsa)}</span> <span class="muted">(${pct(lsaPct)})</span>`);
+    // Ads theo nhóm: Live → Live Đại (lệch +1 ngày); Tư vấn → Mess (cùng kỳ). LN sau ads = LN − ads.
+    let teamAds = null, adsLabel = '', adsKpis = '', adsNote = '';
+    if (t.team === 'Live') {
+      teamAds = j.liveDaiAdSpend; adsLabel = 'Chi ads Live Đại';
       adsNote = `<div class="more">↔ Ads lệch +1 ngày: chi ads = Live Đại ngày trước (tạo ra doanh thu kỳ này)</div>`;
+    } else if (t.team === 'Tư vấn') {
+      teamAds = j.messAdSpend; adsLabel = 'Chi ads Mess';
+      adsNote = `<div class="more">↔ Chi ads Mess (mọi campaign trừ Live Đại) · cùng kỳ</div>`;
+    }
+    if (teamAds != null) {
+      const lsa = t.loiNhuan - teamAds;
+      const lsaPct = t.doanhThu > 0 ? (lsa / t.doanhThu) * 100 : 0;
+      adsKpis = kpi(adsLabel, money(teamAds))
+        + kpi('LN sau ads', `<span${lsa < 0 ? ' style="color:#f87171"' : ''}>${money(lsa)}</span> <span class="muted">(${pct(lsaPct)})</span>`);
     }
 
     const mems = [...t.members.values()]
