@@ -1,0 +1,5 @@
+# Script & config chạy trên Linux (VPS) phải là LF — tránh lỗi CRLF khi commit từ Windows.
+*.sh              text eol=lf
+*.service         text eol=lf
+Caddyfile         text eol=lf
+deploy/env.example text eol=lf
