@@ -1,0 +1,19 @@
+[Unit]
+Description=Pancake Dashboard (bao cao nhan vien realtime)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pancake-dashboard
+EnvironmentFile=/opt/pancake-dashboard/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+# Log ra journald — xem: journalctl -u pancake-dashboard -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

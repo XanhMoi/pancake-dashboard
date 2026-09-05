@@ -1,0 +1,13 @@
+# Caddy tự động cấp SSL (Let's Encrypt) — chỉ cần domain đã trỏ về IP VPS.
+# Đổi baocao.ylg.vn thành domain anh dùng.
+
+baocao.ylg.vn {
+    encode gzip
+    reverse_proxy localhost:3000
+}
+
+# (Tuỳ chọn) muốn cả apex ylg.vn trỏ vào dashboard thì bỏ # dưới đây:
+# ylg.vn {
+#     encode gzip
+#     reverse_proxy localhost:3000
+# }
