@@ -57,6 +57,21 @@ async function pcFetch(url, opts = {}, tries = 3, baseDelay = 400) {
 }
 
 app.use(express.json({ limit: '1mb' }));
+
+// ─── Header bảo vệ (dashboard nội bộ) — không ảnh hưởng dữ liệu/API ───
+app.disable('x-powered-by');                                   // không lộ "Express"
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');                    // chống nhúng iframe (Lively mở trực tiếp, không bị ảnh hưởng)
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');          // không cho Google index
+  if (String(req.headers['x-forwarded-proto'] || '').startsWith('https'))
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
+app.get('/robots.txt', (_req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
+app.get('/favicon.ico', (_req, res) => res.redirect(301, '/favicon.svg'));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,7 +88,16 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const LOGINS_FILE = path.join(DATA_DIR, 'logins.json');
-const SECRET = process.env.SESSION_SECRET || 'pancake-dash-doi-secret-nay-di';
+// Khoá ký phiên: ưu tiên env SESSION_SECRET. Không có env → dùng khoá ngẫu nhiên lưu trên volume
+// (KHÔNG còn khoá mặc định công khai trong code, vì repo public → ai đọc code cũng giả được cookie).
+const SECRET = process.env.SESSION_SECRET || (() => {
+  const f = path.join(DATA_DIR, 'session-secret.key');
+  try { const k = fs.readFileSync(f, 'utf8').trim(); if (k.length >= 32) return k; } catch (_) {}
+  const k = crypto.randomBytes(48).toString('hex');
+  try { fs.writeFileSync(f, k, { mode: 0o600 }); } catch (_) {}
+  console.log('🔑 Chưa có SESSION_SECRET → đã tạo khoá phiên ngẫu nhiên lưu trên volume.');
+  return k;
+})();
 const PERM_KEYS = ['chat', 'nhomSale', 'live', 'pos'];
 
 function fullPerms() { return Object.fromEntries(PERM_KEYS.map(k => [k, true])); }
@@ -98,9 +122,10 @@ function recordLogin(u) {
   if (!d.users || d.users.length === 0) {
     const salt = crypto.randomBytes(16).toString('hex');
     const u = process.env.ADMIN_USER || 'admin';
-    const p = process.env.ADMIN_PASS || 'Xanh123@@';
+    // Không để mật khẩu cứng trong code (repo public). Không có env → sinh ngẫu nhiên, in 1 lần ra log.
+    const p = process.env.ADMIN_PASS || crypto.randomBytes(9).toString('base64url');
     saveUsers({ users: [{ u, salt, pass: hashPw(p, salt), role: 'admin', perms: fullPerms(), created: new Date().toISOString() }] });
-    console.log(`👤 Đã tạo admin đầu tiên: "${u}" (đổi mật khẩu qua env ADMIN_PASS)`);
+    console.log(`👤 Đã tạo admin đầu tiên: "${u}"` + (process.env.ADMIN_PASS ? ' (mật khẩu từ env ADMIN_PASS)' : ` — mật khẩu tạm: ${p} (đổi ngay trong Quản trị)`));
   }
 })();
 

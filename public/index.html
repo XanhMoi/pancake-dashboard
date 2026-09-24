@@ -3,139 +3,256 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0c0d10">
+<meta name="color-scheme" content="dark">
 <title>Pancake · Báo cáo nhân viên realtime</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  /* ══════════════════════════════════════════════════════════════════════════
+     Pancake · Báo cáo nhân viên — hệ thống giao diện (bản nâng cấp)
+     Chỉ là "vỏ": KHÔNG đổi cách tính / định dạng số (JS giữ nguyên).
+     Một màu nhấn duy nhất = vàng Pancake; xanh lá / đỏ chỉ dùng cho ý nghĩa số (tăng / âm).
+     ══════════════════════════════════════════════════════════════════════════ */
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #0f1115; --card: #181b22; --card2: #1f2430; --line: #2a2f3a;
-    --txt: #e8eaf0; --mut: #8b93a7; --accent: #f6c344; --green: #36d399; --red: #f87272; --blue: #60a5fa;
+    --bg: #0c0d10; --card: #15171c; --card2: #1b1e25; --card3: #22262f;
+    --line: rgba(255,255,255,.075); --line2: rgba(255,255,255,.13);
+    --txt: #eceef3; --mut: #8d93a3; --faint: #5f6575;
+    --accent: #f6c344; --accent-ink: #1a1300; --accent-soft: rgba(246,195,68,.12);
+    --green: #34d399; --red: #f87171; --blue: #7fb2ff;
+    --r: 16px; --r-sm: 10px;
+    --ease: cubic-bezier(.22,.8,.24,1);
+    --shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 14px 34px -22px rgba(0,0,0,.9);
+    color-scheme: dark;
   }
-  body { background: var(--bg); color: var(--txt); font-family: 'Segoe UI', system-ui, sans-serif; padding: 16px; }
-  a { color: var(--blue); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background:
+      radial-gradient(1100px 460px at 10% -12%, rgba(246,195,68,.07), transparent 62%),
+      radial-gradient(900px 420px at 105% -6%, rgba(127,178,255,.045), transparent 58%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--txt); padding: clamp(14px, 2.2vw, 28px);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: -.005em;
+  }
+  a { color: var(--accent); }
+  ::selection { background: rgba(246,195,68,.28); }
+  /* Số: cùng độ rộng → cột thẳng hàng (chỉ đổi hiển thị, không đổi giá trị) */
+  .val, .v, td, .rank, .tsub, .chip, .tip, .chartx span, .sub { font-variant-numeric: tabular-nums; }
 
-  /* ── Setup ── */
-  .setup { max-width: 560px; margin: 6vh auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 28px; }
-  .setup h1 { font-size: 20px; margin-bottom: 4px; }
-  .setup p.sub { color: var(--mut); font-size: 13px; margin-bottom: 20px; }
-  .fld { margin-bottom: 14px; }
-  .fld label { display: block; font-size: 12px; color: var(--mut); margin-bottom: 5px; }
-  .fld input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--txt); padding: 10px 12px; border-radius: 8px; font-size: 14px; }
-  .btn { background: var(--accent); color: #1a1300; border: none; padding: 11px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
-  .btn:hover { filter: brightness(1.08); }
-  .btn.ghost { background: transparent; color: var(--txt); border: 1px solid var(--line); }
-  .pagebox { max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 6px; }
-  .pagerow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-  .pagerow:hover { background: var(--card2); }
-  .pagerow input { width: auto; }
-  .err { color: var(--red); font-size: 13px; margin-top: 8px; min-height: 18px; }
-  .hint { font-size: 11px; color: var(--mut); margin-top: 3px; }
+  /* ── icon (SVG line, thay emoji) ── */
+  .ic { width: 1.05em; height: 1.05em; flex: none; display: inline-block; vertical-align: -.16em;
+    fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .ic.acc { color: var(--accent); }
 
-  /* ── Dashboard ── */
-  .topbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-  .topbar h1 { font-size: 18px; }
+  /* ── Khung đăng nhập / cấu hình / quản trị ── */
+  .setup { max-width: 460px; margin: min(10vh, 90px) auto 24px; background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--line2); border-radius: 22px; padding: 30px 28px; box-shadow: var(--shadow), 0 30px 80px -40px rgba(0,0,0,.95); }
+  .setup .brand { width: 46px; height: 46px; border-radius: 13px; background: var(--accent); color: var(--accent-ink);
+    display: grid; place-items: center; margin-bottom: 18px; box-shadow: 0 10px 26px -10px rgba(246,195,68,.55); }
+  .setup .brand .ic { width: 24px; height: 24px; stroke-width: 2; }
+  .setup h1 { font-size: 21px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+  .setup h1 .ic { color: var(--accent); }
+  .setup h3 { display: flex; align-items: center; gap: 8px; }
+  .setup h3 .ic { color: var(--mut); }
+  .setup p.sub { color: var(--mut); font-size: 13.5px; line-height: 1.55; margin-bottom: 22px; }
+  .fld { margin-bottom: 15px; }
+  .fld label { display: block; font-size: 12.5px; font-weight: 500; color: var(--mut); margin-bottom: 7px; }
+  .fld input { width: 100%; background: rgba(0,0,0,.28); border: 1px solid var(--line2); color: var(--txt);
+    padding: 12px 13px; border-radius: 11px; font: inherit; font-size: 15px; transition: border-color .18s var(--ease), box-shadow .18s var(--ease); }
+  .fld input::placeholder { color: var(--faint); }
+  .fld input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px;
+    background: var(--accent); color: var(--accent-ink); border: 1px solid transparent; padding: 10px 18px; border-radius: 11px;
+    font: inherit; font-weight: 650; font-size: 14px; cursor: pointer;
+    transition: filter .18s var(--ease), transform .12s var(--ease), background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease); }
+  .btn:hover { filter: brightness(1.07); }
+  .btn:active { transform: translateY(1px) scale(.99); }
+  .btn.ghost { background: rgba(255,255,255,.03); color: var(--txt); border-color: var(--line2); }
+  .btn.ghost:hover { background: rgba(255,255,255,.07); filter: none; }
+  .btn .ic { width: 16px; height: 16px; }
+  .setup .btn.primary-full { width: 100%; margin-top: 6px; }
+  .pagebox { max-height: 240px; overflow-y: auto; border: 1px solid var(--line2); border-radius: 11px; padding: 6px; margin-top: 6px; background: rgba(0,0,0,.2); }
+  .pagerow { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .pagerow:hover { background: var(--card3); }
+  .pagerow input { width: auto; accent-color: var(--accent); }
+  .err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .hint { font-size: 12px; color: var(--mut); margin-top: 5px; line-height: 1.5; }
+
+  /* ── Thanh trên cùng ── */
+  #dash { max-width: 1680px; margin: 0 auto; }
+  .topbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin-bottom: 18px; }
+  .topbar h1 { font-size: 20px; font-weight: 750; letter-spacing: -.025em; display: flex; align-items: center; gap: 10px; }
+  .topbar h1 .logo { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center;
+    box-shadow: 0 8px 20px -10px rgba(246,195,68,.6); }
+  .topbar h1 .logo .ic { width: 17px; height: 17px; stroke-width: 2.1; }
   .topbar .spacer { flex: 1; }
-  .topbar input[type=date] { background: var(--card); border: 1px solid var(--line); color: var(--txt); padding: 7px 10px; border-radius: 8px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 8px var(--green); animation: pulse 1.6s infinite; }
+  .tb-right { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  /* Màn vừa: 3 nút thao tác chỉ còn icon (có title + aria-label) để 1 hàng gọn */
+  @media (min-width: 641px) and (max-width: 1599px) { .topbar .act { padding: 0; width: 40px; min-height: 40px; } .topbar .act .bl { display: none; } }
+  .topbar input[type=date] { background: var(--card); border: 1px solid var(--line2); color: var(--txt); padding: 8px 10px; border-radius: 10px;
+    font: inherit; font-size: 13.5px; min-height: 38px; }
+  .topbar input[type=date]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 10px var(--green); animation: pulse 1.8s var(--ease) infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-  .live { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+  .live { font-size: 12.5px; color: var(--mut); display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.02); }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 12px; margin-bottom: 18px; }
-  .c { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-  .c .lab { font-size: 12px; color: var(--mut); margin-bottom: 6px; }
-  .c .val { font-size: 26px; font-weight: 700; }
-  .c .sub { font-size: 11px; color: var(--mut); margin-top: 4px; }
-  .c.accent .val { color: var(--accent); }
-  .c.green .val { color: var(--green); }
-  .c.blue .val { color: var(--blue); }
-  .c.red .val { color: var(--red); }
+  /* ── Thẻ số ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .c { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 16px 18px 15px; box-shadow: var(--shadow); transition: border-color .2s var(--ease), transform .2s var(--ease); }
+  .c::before { content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px; border-radius: 0 3px 3px 0; background: var(--line2); }
+  .c.accent::before { background: var(--accent); } .c.green::before { background: var(--green); }
+  .c.blue::before { background: var(--blue); } .c.red::before { background: var(--red); }
+  .c:hover { border-color: var(--line2); transform: translateY(-1px); }
+  .c .lab { font-size: 12.5px; font-weight: 500; color: var(--mut); margin-bottom: 8px; }
+  .c .val { font-size: 25px; font-weight: 750; letter-spacing: -.03em; line-height: 1.15; }
+  .c .sub { font-size: 12px; color: var(--mut); margin-top: 6px; line-height: 1.45; }
+  .c.accent .val { color: var(--accent); } .c.green .val { color: var(--green); }
+  .c.blue .val { color: var(--blue); } .c.red .val { color: var(--red); }
 
-  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
-  thead th { background: var(--card2); font-size: 12px; color: var(--mut); text-align: right; padding: 11px 14px; font-weight: 600; cursor: pointer; user-select: none; }
+  /* ── Bảng ── */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--r); overflow: hidden; }
+  thead th { background: var(--card2); font-size: 12px; font-weight: 600; color: var(--mut); text-align: right; padding: 11px 14px; white-space: nowrap; user-select: none; }
   thead th:first-child { text-align: left; }
+  thead th[data-k] { cursor: pointer; transition: color .15s var(--ease); }
+  thead th[data-k]:hover { color: var(--txt); }
+  thead th[data-k]::after { content: ' ↕'; color: var(--faint); font-size: 11px; }
   tbody td { padding: 11px 14px; font-size: 14px; text-align: right; border-top: 1px solid var(--line); }
   tbody td:first-child { text-align: left; font-weight: 600; }
-  tbody tr:hover { background: var(--card2); }
-  .rank { color: var(--mut); font-weight: 400; margin-right: 8px; }
-  .pill { padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-  .pill.hi { background: rgba(54,211,153,.15); color: var(--green); }
-  .pill.mid { background: rgba(246,195,68,.15); color: var(--accent); }
-  .pill.lo { background: rgba(248,114,114,.13); color: var(--red); }
-  .totrow td { font-weight: 700; border-top: 2px solid var(--line); background: var(--card2); }
-  .warn { background: rgba(248,114,114,.12); border: 1px solid var(--red); color: #ffd7d7; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+  tbody tr { transition: background .15s var(--ease); }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  .rank { color: var(--faint); font-weight: 500; margin-right: 9px; display: inline-block; min-width: 1.4em; }
+  .pill { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.hi { background: rgba(52,211,153,.14); color: var(--green); }
+  .pill.mid { background: var(--accent-soft); color: var(--accent); }
+  .pill.lo { background: rgba(248,113,113,.13); color: var(--red); }
+  .totrow td { font-weight: 700; border-top: 1px solid var(--line2); background: var(--card2); }
+  .warn { display: flex; gap: 10px; align-items: flex-start; background: rgba(248,113,113,.09); border: 1px solid rgba(248,113,113,.4);
+    color: #ffd9d9; padding: 12px 15px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; margin-bottom: 16px; }
+  .warn .ic { color: var(--red); margin-top: 2px; }
   .muted { color: var(--mut); }
-  .hidden { display: none; }
+  .hidden { display: none !important; }
 
-  /* ── POS section ── */
-  .sec-title { font-size: 14px; color: var(--mut); margin: 18px 0 10px; font-weight: 600; letter-spacing: .3px; }
-  .posbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 18px; }
-  .posbar .k { background: var(--card); padding: 12px 14px; }
-  .posbar .k .lab { font-size: 11px; color: var(--mut); margin-bottom: 5px; }
-  .posbar .k .v { font-size: 17px; font-weight: 700; }
+  /* ── Khối POS ── */
+  .sec-title { font-size: 15px; font-weight: 700; color: var(--txt); letter-spacing: -.01em; margin: 26px 0 12px;
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .sec-title .ic { color: var(--accent); width: 18px; height: 18px; }
+  .posbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px,1fr)); gap: 1px; background: var(--line);
+    border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; margin-bottom: 18px; }
+  .posbar .k { background: var(--card); padding: 13px 15px; }
+  .posbar .k .lab { font-size: 11.5px; font-weight: 500; color: var(--mut); margin-bottom: 6px; }
+  .posbar .k .v { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
   .posbar .k .d { font-size: 11px; margin-top: 3px; }
   .up { color: var(--green); } .down { color: var(--red); }
-  .chartwrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
-  .charttitle { font-size: 12px; color: var(--mut); margin-bottom: 12px; }
-  .chart { display: flex; align-items: flex-end; gap: 3px; height: 140px; }
-  .chart .bar { flex: 1; background: linear-gradient(180deg, var(--blue), rgba(96,165,250,.25)); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; transition: height .3s; }
-  .chart .bar:hover { filter: brightness(1.3); }
-  .chart .bar .tip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #000; color: #fff; font-size: 11px; padding: 3px 6px; border-radius: 4px; white-space: nowrap; margin-bottom: 4px; }
-  .chart .bar:hover .tip { display: block; }
-  .chart .axis { display: flex; }
-  .chartx { display: flex; gap: 3px; margin-top: 4px; }
-  .chartx span { flex: 1; text-align: center; font-size: 9px; color: var(--mut); }
+  .chartwrap { background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 16px 18px 12px; margin-bottom: 18px; box-shadow: var(--shadow); }
+  .charttitle { font-size: 12.5px; font-weight: 500; color: var(--mut); margin-bottom: 14px; }
+  .chart { display: flex; align-items: flex-end; gap: 4px; height: 150px; }
+  .chart .bar { flex: 1; background: linear-gradient(180deg, var(--accent), rgba(246,195,68,.18)); border-radius: 4px 4px 1px 1px;
+    min-height: 2px; position: relative; transition: filter .15s var(--ease); cursor: pointer; outline: none; }
+  .chart .bar:hover, .chart .bar:focus-visible, .chart .bar:focus { filter: brightness(1.25); }
+  .chart .bar .tip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #0b0c0f; color: var(--txt);
+    border: 1px solid var(--line2); font-size: 11.5px; padding: 5px 8px; border-radius: 7px; white-space: nowrap; margin-bottom: 6px; z-index: 5;
+    box-shadow: 0 10px 24px -12px rgba(0,0,0,.9); pointer-events: none; }
+  .chart .bar:hover .tip, .chart .bar:focus .tip, .chart .bar.on .tip { display: block; }
+  .chart .bar.on { filter: brightness(1.25); }
+  .chartx { display: flex; gap: 4px; margin-top: 6px; }
+  .chartx span { flex: 1; text-align: center; font-size: 10px; color: var(--faint); }
 
-  /* ── breakdown panels ── */
+  /* ── Bảng chi tiết (panel) ── */
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
   @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
-
-  /* ── tab chuyển view (POS+Nhóm ↔ Thống kê chi tiết) ── */
-  .tabs { display: flex; gap: 8px; margin: 4px 0 18px; flex-wrap: wrap; }
-  .tab { background: var(--card); color: var(--mut); border: 1px solid var(--line);
-    padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
-  .tab:hover { color: var(--txt); }
-  .tab.active { background: var(--accent); color: #1a1300; border-color: var(--accent); }
-  .view { animation: fade .18s ease; }
-  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-
-  /* ── dashboard con theo nhóm sale ── */
-  .teamgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px,1fr)); gap: 14px; margin-bottom: 8px; }
-  .teamblock { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; }
-  .teamblock .thead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-  .teamblock .tname { font-weight: 700; font-size: 15px; }
-  .teamblock .tname .dot2 { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px; vertical-align:middle; }
-  .teamblock .tsub { font-size: 11px; color: var(--mut); }
-  .teamblock .posbar { margin-bottom: 12px; }
-  .teamblock table { font-size: 12px; }
-  .teamblock th, .teamblock td { padding: 6px 8px; }
-  .teamblock .more { font-size: 11px; color: var(--mut); margin-top: 6px; }
-
-  /* ── date range picker ── */
-  .dater { display: flex; align-items: center; gap: 6px; }
-  .dater .sep { color: var(--mut); }
-  .dater .quick { display: flex; gap: 4px; margin-left: 4px; }
-  .btn.sm { padding: 6px 10px; font-size: 12px; }
-  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; }
-  .panel h3 { font-size: 13px; margin-bottom: 10px; color: var(--txt); }
-  .panel table { background: transparent; }
-  .panel thead th { background: transparent; padding: 7px 8px; font-size: 11px; border-bottom: 1px solid var(--line); cursor: default; }
-  .panel tbody td { padding: 7px 8px; font-size: 12.5px; border-top: 1px solid var(--line); }
-  .panel tbody tr:hover { background: var(--card2); }
-  .panel tfoot td { padding: 8px; font-size: 13px; font-weight: 700; border-top: 2px solid var(--line); background: var(--card2); }
+  .panel { background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 15px 17px; overflow-x: auto; box-shadow: var(--shadow); }
+  .panel h3 { font-size: 13.5px; font-weight: 650; margin-bottom: 11px; color: var(--txt); }
+  .panel table { background: transparent; border-radius: 0; }
+  .panel thead th { background: transparent; padding: 8px 9px; font-size: 11.5px; border-bottom: 1px solid var(--line2); }
+  .panel tbody td { padding: 8px 9px; font-size: 13px; border-top: 1px solid var(--line); }
+  .panel tbody tr:hover { background: rgba(255,255,255,.03); }
+  .panel tfoot td { padding: 9px; font-size: 13px; font-weight: 700; border-top: 1px solid var(--line2); background: rgba(255,255,255,.025); text-align: right; }
+  .panel tfoot td:first-child { text-align: left; }
   .panel td.neg, .neg { color: var(--red); }
-  .chg { font-size: 10px; margin-left: 5px; }
+  .chg { font-size: 10.5px; margin-left: 5px; font-weight: 600; }
   .pname { display: flex; flex-direction: column; }
-  .pname small { color: var(--mut); font-size: 10px; font-weight: 400; }
+  .pname small { color: var(--mut); font-size: 10.5px; font-weight: 400; }
 
-  /* ── phân quyền / quản trị ── */
-  .permbox { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-  .permrow { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--txt); }
-  .permrow input { width: auto; }
-  .utable { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .utable th { color: var(--mut); font-weight: 600; font-size: 11px; text-align: left; padding: 7px 8px; }
-  .utable td { padding: 9px 8px; border-top: 1px solid var(--line); text-align: left; }
-  .chip { display: inline-block; background: var(--card2); border: 1px solid var(--line); border-radius: 20px; padding: 1px 9px; font-size: 11px; margin: 1px 2px; color: var(--mut); }
-  .xbtn { background: transparent; border: 1px solid var(--line); color: var(--red); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12px; }
-  .xbtn:hover { filter: brightness(1.2); }
+  /* ── Tab chuyển view ── */
+  .tabs { display: inline-flex; gap: 4px; margin: 2px 0 18px; flex-wrap: wrap; padding: 4px; background: rgba(255,255,255,.025);
+    border: 1px solid var(--line); border-radius: 14px; }
+  .tab { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: var(--mut); border: 1px solid transparent;
+    padding: 9px 16px; border-radius: 10px; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; min-height: 40px;
+    transition: color .18s var(--ease), background .18s var(--ease); }
+  .tab .ic { width: 17px; height: 17px; }
+  .tab:hover { color: var(--txt); background: rgba(255,255,255,.04); }
+  .tab.active { background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 20px -12px rgba(246,195,68,.7); }
+  .view { animation: fade .28s var(--ease); }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* ── Dashboard theo nhóm sale ── */
+  .teamgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%),1fr)); gap: 14px; margin-bottom: 8px; }
+  .teamblock { background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 15px; min-width: 0; box-shadow: var(--shadow); }
+  .teamblock .thead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 11px; }
+  .teamblock .tname { font-weight: 700; font-size: 15.5px; letter-spacing: -.01em; }
+  .teamblock .tname .dot2 { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 8px; vertical-align: 1px; }
+  .teamblock .tsub { font-size: 11.5px; color: var(--mut); }
+  .teamblock .posbar { margin-bottom: 12px; }
+  .teamblock table { font-size: 12.5px; background: transparent; }
+  .teamblock thead th { background: rgba(255,255,255,.03); }
+  .teamblock th, .teamblock td { padding: 7px 9px; }
+  .teamblock .more { font-size: 11.5px; color: var(--mut); margin-top: 7px; }
+
+  /* ── Chọn ngày ── */
+  .dater { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .dater .sep { color: var(--faint); }
+  .dater .quick { display: flex; gap: 4px; margin-left: 4px; flex-wrap: wrap; }
+  .btn.sm { padding: 7px 11px; font-size: 12.5px; min-height: 36px; border-radius: 9px; }
+
+  /* ── Phân quyền / quản trị ── */
+  .permbox { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line2); border-radius: 11px; padding: 8px; background: rgba(0,0,0,.2); }
+  .permrow { display: flex; align-items: center; gap: 9px; font-size: 14px; cursor: pointer; color: var(--txt); padding: 7px 8px; border-radius: 8px; }
+  .permrow:hover { background: var(--card3); }
+  .permrow .ic { color: var(--mut); }
+  .permrow input { width: auto; accent-color: var(--accent); }
+  .utable { width: 100%; border-collapse: collapse; font-size: 13px; background: transparent; }
+  .utable th { color: var(--mut); font-weight: 600; font-size: 11.5px; text-align: left; padding: 8px; background: transparent; }
+  .utable td { padding: 10px 8px; border-top: 1px solid var(--line); text-align: left; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--card3); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11px; margin: 1px 2px; color: var(--mut); }
+  .xbtn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--line2); color: var(--red);
+    border-radius: 8px; padding: 6px 10px; min-height: 32px; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600;
+    transition: background .15s var(--ease); }
+  .xbtn:hover { background: rgba(255,255,255,.05); }
+  .panelbox { margin: 18px 0 8px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.02); }
+
+  /* ── Bàn phím: viền focus rõ (không đổi layout) ── */
+  :is(button, a, input, select, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fld input:focus-visible { outline: none; }
+
+  /* ── Điện thoại: chữ ô nhập 16px (iPhone không tự zoom), nút ≥ 44px ── */
+  @media (max-width: 640px) {
+    .fld input, .topbar input[type=date] { font-size: 16px; }
+    .btn, .tab { min-height: 44px; }
+    .btn.sm { min-height: 40px; }
+    .setup { padding: 26px 20px; margin-top: 6vh; }
+    .topbar h1 { font-size: 18px; }
+    .c .val { font-size: 22px; }
+    .teamgrid { grid-template-columns: 1fr; }
+    .teamblock table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { font-size: 13px; }
+  }
+
+  /* ── Giảm chuyển động theo cài đặt máy ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+
   /* ─── Chế độ HÌNH NỀN (kiosk): ẩn nút điều khiển, chỉ hiện số liệu ─── */
   body.kiosk .dater,
   body.kiosk #b-admin-open,
@@ -143,48 +260,70 @@
   body.kiosk #b-logout,
   body.kiosk #view-tabs { display: none !important; }
   body.kiosk { cursor: default; }
+  body.kiosk #dash { max-width: none; }
 </style>
 </head>
 <body>
 
+<!-- Bộ icon SVG (line) — thay cho emoji -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.8 11H4.8z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L22 7H6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8"/></symbol>
+  <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 16.2a6 6 0 0 0 0-8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 19.1a10 10 0 0 0 0-14.2"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
+</svg>
+
 <!-- ─── LOGIN ─── -->
-<div id="login" class="setup hidden">
-  <h1>🔐 Đăng nhập</h1>
+<form id="login" class="setup hidden" novalidate autocomplete="on">
+  <div class="brand"><svg class="ic"><use href="#i-chart"/></svg></div>
+  <h1>Đăng nhập</h1>
   <p class="sub">Báo cáo nhân viên Pancake — nội bộ YOLO LIFE GROUP.</p>
   <div class="fld">
-    <label>Tên đăng nhập</label>
-    <input id="l-user" type="text" placeholder="tên đăng nhập" autocomplete="username">
+    <label for="l-user">Tên đăng nhập</label>
+    <input id="l-user" name="username" type="text" placeholder="tên đăng nhập" autocomplete="username" autocapitalize="none" spellcheck="false">
   </div>
   <div class="fld">
-    <label>Mật khẩu</label>
-    <input id="l-pass" type="password" placeholder="mật khẩu" autocomplete="current-password">
+    <label for="l-pass">Mật khẩu</label>
+    <input id="l-pass" name="password" type="password" placeholder="mật khẩu" autocomplete="current-password">
   </div>
-  <button class="btn" id="b-login">Đăng nhập →</button>
-  <div class="err" id="login-err"></div>
-</div>
+  <button class="btn primary-full" id="b-login" type="submit">Đăng nhập →</button>
+  <div class="err" id="login-err" role="alert" aria-live="polite"></div>
+</form>
 
 <!-- ─── CẤU HÌNH KẾT NỐI (admin) ─── -->
-<div id="setup" class="setup hidden">
-  <h1>⚙️ Cấu hình kết nối Pancake</h1>
+<div id="setup" class="setup hidden" style="max-width:600px;">
+  <h1><svg class="ic"><use href="#i-gear"/></svg>Cấu hình kết nối Pancake</h1>
   <p class="sub">Token lưu trên <b>server</b>, dùng chung cho mọi tài khoản. Chỉ admin cấu hình — nhân viên đăng nhập là xem, không cần token.</p>
 
   <div class="fld">
-    <label>POS api_key <span class="muted">(vĩnh viễn — đơn/doanh thu/lợi nhuận/Nhóm Live, KHÔNG hết hạn)</span></label>
-    <input id="i-poskey" type="password" placeholder="dán api_key POS; để trống nếu không đổi">
+    <label for="i-poskey">POS api_key <span class="muted">(vĩnh viễn — đơn/doanh thu/lợi nhuận/Nhóm Live, KHÔNG hết hạn)</span></label>
+    <input id="i-poskey" type="password" placeholder="dán api_key POS; để trống nếu không đổi" autocomplete="off">
     <div class="hint" id="i-poskey-has"></div>
   </div>
   <div class="fld">
-    <label>Shop ID <span class="muted">(POS)</span></label>
-    <input id="i-shop" type="text" placeholder="vd: 230277434">
+    <label for="i-shop">Shop ID <span class="muted">(POS)</span></label>
+    <input id="i-shop" type="text" placeholder="vd: 123456789" autocomplete="off">
   </div>
   <div class="fld">
-    <label>Pancake access token <span class="muted">(Chat: bảng nhân viên inbox/bình luận — có thể hết hạn, nhập lại khi bảng NV trống)</span></label>
-    <input id="i-chat" type="password" placeholder="dán token mới; để trống nếu không đổi">
+    <label for="i-chat">Pancake access token <span class="muted">(Chat: bảng nhân viên inbox/bình luận — có thể hết hạn, nhập lại khi bảng NV trống)</span></label>
+    <input id="i-chat" type="password" placeholder="dán token mới; để trống nếu không đổi" autocomplete="off">
     <div class="hint" id="i-chat-has"></div>
   </div>
 
-  <button class="btn ghost" id="b-loadpages">Tải danh sách Page</button>
-  <div class="err" id="setup-err"></div>
+  <button class="btn ghost" id="b-loadpages" type="button">Tải danh sách Page</button>
+  <div class="err" id="setup-err" role="alert" aria-live="polite"></div>
 
   <div id="pages-wrap" class="hidden">
     <div class="fld" style="margin-top:14px;">
@@ -193,82 +332,83 @@
       <div class="hint">Tick đúng những page cần theo dõi. Tổng số liệu cộng từ các page này.</div>
     </div>
   </div>
-  <div style="margin-top:14px; display:flex; gap:8px;">
-    <button class="btn" id="b-start">Lưu &amp; xem dashboard →</button>
-    <button class="btn ghost hidden" id="b-setup-back">← Quay lại</button>
+  <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+    <button class="btn" id="b-start" type="button">Lưu &amp; xem dashboard →</button>
+    <button class="btn ghost hidden" id="b-setup-back" type="button">← Quay lại</button>
   </div>
 </div>
 
 <!-- ─── QUẢN TRỊ TÀI KHOẢN (admin) ─── -->
-<div id="admin" class="setup hidden" style="max-width:760px;">
-  <h1>👑 Quản trị tài khoản</h1>
+<div id="admin" class="setup hidden" style="max-width:780px;">
+  <h1><svg class="ic"><use href="#i-crown"/></svg>Quản trị tài khoản</h1>
   <p class="sub">Anh là admin. Tạo tài khoản cho nhân viên và tick các mục họ được xem. Chỉnh xong bấm <b>Lưu</b> ở từng dòng.</p>
 
   <div id="admin-list" style="margin-bottom:8px;"></div>
 
   <!-- Ghép nối hình nền động (Lively) -->
-  <div style="margin:18px 0 8px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--card2);">
+  <div class="panelbox">
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-      <h3 style="font-size:15px; margin:0;">🖼️ Hình nền động</h3>
-      <button class="xbtn" id="b-wp-pair" style="color:var(--accent)">Tạo link hình nền</button>
-      <span class="muted" style="font-size:12px;">Dán link vào Lively — tự đăng nhập, dùng 30 ngày.</span>
+      <h3 style="font-size:15px; margin:0;"><svg class="ic"><use href="#i-image"/></svg>Hình nền động</h3>
+      <button class="xbtn" id="b-wp-pair" type="button" style="color:var(--accent)">Tạo link hình nền</button>
+      <span class="muted" style="font-size:12.5px;">Dán link vào Lively — tự đăng nhập, dùng 30 ngày.</span>
     </div>
     <div id="wp-pair-out" style="margin-top:10px;"></div>
   </div>
 
-  <div style="display:flex; align-items:center; gap:12px; margin:20px 0 8px;">
-    <h3 style="font-size:15px; margin:0;">📜 Đăng nhập gần đây</h3>
-    <button class="xbtn" id="b-logout-all" style="color:var(--accent)">🔴 Đăng xuất tất cả</button>
+  <div style="display:flex; align-items:center; gap:12px; margin:22px 0 8px; flex-wrap:wrap;">
+    <h3 style="font-size:15px; margin:0;"><svg class="ic"><use href="#i-history"/></svg>Đăng nhập gần đây</h3>
+    <button class="xbtn" id="b-logout-all" type="button" style="color:var(--accent)"><svg class="ic"><use href="#i-logout"/></svg>Đăng xuất tất cả</button>
   </div>
   <div id="login-log"></div>
 
-  <h3 style="margin:20px 0 10px; font-size:15px;">➕ Thêm tài khoản</h3>
-  <div class="fld"><label>Tên đăng nhập</label><input id="a-user" type="text" placeholder="vd: thu, tuvan1"></div>
-  <div class="fld"><label>Mật khẩu</label><input id="a-pass" type="text" placeholder="mật khẩu"></div>
+  <h3 style="margin:22px 0 12px; font-size:15px;"><svg class="ic"><use href="#i-plus"/></svg>Thêm tài khoản</h3>
+  <div class="fld"><label for="a-user">Tên đăng nhập</label><input id="a-user" type="text" placeholder="vd: thu, tuvan1" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+  <div class="fld"><label for="a-pass">Mật khẩu</label><input id="a-pass" type="text" placeholder="mật khẩu" autocomplete="new-password" spellcheck="false"></div>
   <div class="fld">
     <label>Được xem những mục nào?</label>
     <div class="permbox" id="a-perms">
-      <label class="permrow"><input type="checkbox" data-perm="chat"> 👥 Thống kê chi tiết · Nhân viên</label>
-      <label class="permrow"><input type="checkbox" data-perm="nhomSale"> 🧩 Dashboard theo nhóm sale</label>
-      <label class="permrow"><input type="checkbox" data-perm="live"> 🔴 Kênh Live (chi ads)</label>
-      <label class="permrow"><input type="checkbox" data-perm="pos"> 🛒 POS · Tổng quan</label>
+      <label class="permrow"><input type="checkbox" data-perm="chat"><svg class="ic"><use href="#i-users"/></svg>Thống kê chi tiết · Nhân viên</label>
+      <label class="permrow"><input type="checkbox" data-perm="nhomSale"><svg class="ic"><use href="#i-grid"/></svg>Dashboard theo nhóm sale</label>
+      <label class="permrow"><input type="checkbox" data-perm="live"><svg class="ic"><use href="#i-live"/></svg>Kênh Live (chi ads)</label>
+      <label class="permrow"><input type="checkbox" data-perm="pos"><svg class="ic"><use href="#i-cart"/></svg>POS · Tổng quan</label>
     </div>
   </div>
-  <div class="err" id="admin-err"></div>
-  <div style="display:flex; gap:8px;">
-    <button class="btn" id="b-adduser">Tạo tài khoản</button>
-    <button class="btn ghost" id="b-admin-back">← Quay lại dashboard</button>
+  <div class="err" id="admin-err" role="alert" aria-live="polite"></div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <button class="btn" id="b-adduser" type="button">Tạo tài khoản</button>
+    <button class="btn ghost" id="b-admin-back" type="button">← Quay lại dashboard</button>
   </div>
 </div>
 
 <!-- ─── DASHBOARD ─── -->
 <div id="dash" class="hidden">
   <div class="topbar">
-    <h1>📊 Báo cáo nhân viên</h1>
-    <span class="live"><span class="dot"></span><span id="live-txt">realtime</span></span>
-    <div class="spacer"></div>
+    <h1><span class="logo"><svg class="ic"><use href="#i-chart"/></svg></span>Báo cáo nhân viên</h1>
+    <span class="live" aria-live="polite"><span class="dot"></span><span id="live-txt">realtime</span></span>
+    <div class="tb-right">
     <div class="dater">
-      <input type="date" id="d-date">
+      <input type="date" id="d-date" aria-label="Từ ngày">
       <span class="sep">→</span>
-      <input type="date" id="d-date-to">
+      <input type="date" id="d-date-to" aria-label="Đến ngày">
       <span class="quick">
-        <button class="btn ghost sm" data-range="today">Hôm nay</button>
-        <button class="btn ghost sm" data-range="yesterday">Hôm qua</button>
-        <button class="btn ghost sm" data-range="7d">7 ngày</button>
-        <button class="btn ghost sm" data-range="month">Tháng này</button>
+        <button class="btn ghost sm" type="button" data-range="today">Hôm nay</button>
+        <button class="btn ghost sm" type="button" data-range="yesterday">Hôm qua</button>
+        <button class="btn ghost sm" type="button" data-range="7d">7 ngày</button>
+        <button class="btn ghost sm" type="button" data-range="month">Tháng này</button>
       </span>
     </div>
-    <button class="btn ghost hidden" id="b-admin-open">👑 Quản trị</button>
-    <button class="btn ghost hidden" id="b-reconf">⚙️ Cấu hình</button>
-    <button class="btn ghost" id="b-logout">Đăng xuất</button>
+    <button class="btn ghost act hidden" id="b-admin-open" type="button" title="Quản trị" aria-label="Quản trị"><svg class="ic"><use href="#i-crown"/></svg><span class="bl">Quản trị</span></button>
+    <button class="btn ghost act hidden" id="b-reconf" type="button" title="Cấu hình" aria-label="Cấu hình"><svg class="ic"><use href="#i-gear"/></svg><span class="bl">Cấu hình</span></button>
+    <button class="btn ghost act" id="b-logout" type="button" title="Đăng xuất" aria-label="Đăng xuất"><svg class="ic"><use href="#i-logout"/></svg><span class="bl">Đăng xuất</span></button>
+    </div>
   </div>
 
-  <div id="poswarn" class="warn hidden">⚠️ Chưa kết nối POS — số đơn đang lấy tạm từ thống kê chat. Vào ⚙️ Cấu hình nhập <b>POS api_key</b> (vĩnh viễn) để đồng bộ đơn chính xác 100%.</div>
+  <div id="poswarn" class="warn hidden" role="status"><svg class="ic"><use href="#i-warn"/></svg><span>Chưa kết nối POS — số đơn đang lấy tạm từ thống kê chat. Vào <b>Cấu hình</b> nhập <b>POS api_key</b> (vĩnh viễn) để đồng bộ đơn chính xác 100%.</span></div>
 
   <!-- Tab chuyển giữa 2 view -->
-  <div class="tabs" id="view-tabs">
-    <button class="tab" data-view="chat">👥 Thống kê chi tiết · Nhân viên</button>
-    <button class="tab active" data-view="pos">🛒 POS · Tổng quan &amp; 🧩 Dashboard theo nhóm sale</button>
+  <div class="tabs" id="view-tabs" role="tablist">
+    <button class="tab" type="button" data-view="chat" role="tab"><svg class="ic"><use href="#i-users"/></svg>Thống kê chi tiết · Nhân viên</button>
+    <button class="tab active" type="button" data-view="pos" role="tab"><svg class="ic"><use href="#i-cart"/></svg>POS · Tổng quan &amp; Dashboard theo nhóm sale</button>
   </div>
 
   <!-- VIEW A: POS Tổng quan + Dashboard theo nhóm sale -->
@@ -276,13 +416,13 @@
 
   <!-- Dashboard con theo nhóm sale (CSKH · Live · Tư vấn) -->
   <div id="teams-section" class="hidden">
-    <h2 class="sec-title" style="margin-top:0">🧩 Dashboard theo nhóm sale</h2>
+    <h2 class="sec-title" style="margin-top:0"><svg class="ic"><use href="#i-grid"/></svg>Dashboard theo nhóm sale</h2>
     <div class="teamgrid" id="teamgrid"></div>
   </div>
 
   <!-- KÊNH LIVE: ads Live Đại (ngày N) ↔ doanh thu Nhóm Live (ngày N+1) -->
   <div id="kenhlive-section" class="hidden">
-    <h2 class="sec-title">🔴 Kênh Live — chi ads Live Đại ↔ doanh thu Nhóm Live
+    <h2 class="sec-title"><svg class="ic"><use href="#i-live"/></svg>Kênh Live — chi ads Live Đại ↔ doanh thu Nhóm Live
       <span class="muted" style="font-size:13px;font-weight:400"> (sale lên đơn sau 1 ngày Live)</span></h2>
     <div class="cards" id="kenhlive-cards"></div>
     <div class="panel">
@@ -298,7 +438,7 @@
 
   <!-- POS Tổng quan (phần riêng, khớp pos.pancake.vn) -->
   <div id="pos-section" class="hidden">
-    <h2 class="sec-title" style="margin-top:0">🛒 POS · Tổng quan <span class="muted" id="pos-shop"></span></h2>
+    <h2 class="sec-title" style="margin-top:0"><svg class="ic"><use href="#i-cart"/></svg>POS · Tổng quan <span class="muted" id="pos-shop"></span></h2>
     <div class="cards" id="pos-top"></div>
     <div class="posbar" id="pos-kpi"></div>
     <div class="chartwrap">
@@ -337,10 +477,11 @@
 
   <!-- VIEW B: Thống kê chi tiết · Nhân viên (chat) -->
   <div id="view-chat" class="view hidden">
-  <h2 class="sec-title" style="margin-top:0">💬 Tương tác (chat)</h2>
+  <h2 class="sec-title" style="margin-top:0"><svg class="ic"><use href="#i-chat"/></svg>Tương tác (chat)</h2>
   <div class="cards" id="cards"></div>
 
-  <h2 class="sec-title">👥 Thống kê chi tiết · Nhân viên</h2>
+  <h2 class="sec-title"><svg class="ic"><use href="#i-users"/></svg>Thống kê chi tiết · Nhân viên</h2>
+  <div class="panel" style="padding:0">
   <table>
     <thead>
       <tr>
@@ -358,6 +499,7 @@
     </thead>
     <tbody id="tbody"></tbody>
   </table>
+  </div>
   <p class="hint" id="foot" style="margin-top:10px;"></p>
   </div>
   <!-- /VIEW B -->
@@ -365,6 +507,8 @@
 
 <script>
 const $ = s => document.querySelector(s);
+// Làm sạch chuỗi (tên NV / sản phẩm / page…) trước khi chèn vào HTML — chống chèn mã. Không đụng số.
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const CFG_KEY = 'pck_cfg_v2';
 let S = { chatToken:'', posToken:'', shopId:'', pageIds:[], pages:[], date:'', dateTo:'', sort:'inbox', desc:true, timer:null, last:null };
 
@@ -392,7 +536,7 @@ function fmtTime(sec) {
 
 // ─── Auth / phân quyền ───
 let ME = null, PERMS = {};
-const PERM_LABELS = { chat:'👥 Thống kê NV', nhomSale:'🧩 Nhóm sale', live:'🔴 Kênh Live', pos:'🛒 POS' };
+const PERM_LABELS = { chat:'Thống kê NV', nhomSale:'Nhóm sale', live:'Kênh Live', pos:'POS' };
 
 function hideAll() { ['#login','#setup','#admin','#dash'].forEach(x => $(x).classList.add('hidden')); }
 function showLogin() { if (S.timer) clearInterval(S.timer); hideAll(); $('#login').classList.remove('hidden'); $('#l-user').focus(); }
@@ -454,7 +598,7 @@ function renderPagebox() {
   for (const p of S.pages) {
     const row = document.createElement('label'); row.className = 'pagerow';
     const checked = S.pageIds.includes(p.id) ? 'checked' : '';
-    row.innerHTML = `<input type="checkbox" value="${p.id}" ${checked}> <span>${p.name}</span> <span class="muted" style="margin-left:auto;font-size:11px">${p.platform||''}</span>`;
+    row.innerHTML = `<input type="checkbox" value="${esc(p.id)}" ${checked}> <span>${esc(p.name)}</span> <span class="muted" style="margin-left:auto;font-size:11px">${esc(p.platform||'')}</span>`;
     box.appendChild(row);
   }
 }
@@ -495,16 +639,16 @@ async function renderAdminList() {
     const rows = (uj.users || []).map(u => {
       const online = `<span class="muted" style="font-size:12px">${fmtWhen(u.lastLogin)}</span>`;
       if (u.role === 'admin')
-        return `<tr><td><b>${u.u}</b> <span class="chip" style="color:var(--accent)">admin · xem tất cả</span></td><td style="white-space:nowrap">${online}</td><td></td></tr>`;
+        return `<tr><td><b>${esc(u.u)}</b> <span class="chip" style="color:var(--accent)">admin · xem tất cả</span></td><td style="white-space:nowrap">${online}</td><td></td></tr>`;
       const checks = Object.keys(PERM_LABELS).map(k =>
-        `<label class="permrow" style="display:inline-flex;margin:0 12px 4px 0"><input type="checkbox" data-uperm="${u.u}" data-perm="${k}" ${u.perms[k]?'checked':''}> ${PERM_LABELS[k]}</label>`).join('');
+        `<label class="permrow" style="display:inline-flex;margin:0 12px 4px 0"><input type="checkbox" data-uperm="${esc(u.u)}" data-perm="${k}" ${u.perms[k]?'checked':''}> ${PERM_LABELS[k]}</label>`).join('');
       return `<tr>
-        <td style="vertical-align:top"><b>${u.u}</b><div style="margin-top:6px">${checks}</div></td>
+        <td style="vertical-align:top"><b>${esc(u.u)}</b><div style="margin-top:6px">${checks}</div></td>
         <td style="vertical-align:top;white-space:nowrap">${online}</td>
         <td style="text-align:right;white-space:nowrap;vertical-align:top">
-          <button class="xbtn" style="color:var(--green)" data-save="${u.u}">Lưu</button>
-          <button class="xbtn" style="color:var(--accent)" data-rp="${u.u}">MK</button>
-          <button class="xbtn" data-del="${u.u}">Xoá</button></td></tr>`;
+          <button class="xbtn" style="color:var(--green)" data-save="${esc(u.u)}">Lưu</button>
+          <button class="xbtn" style="color:var(--accent)" data-rp="${esc(u.u)}">MK</button>
+          <button class="xbtn" data-del="${esc(u.u)}">Xoá</button></td></tr>`;
     }).join('');
     box.innerHTML = `<table class="utable"><thead><tr><th>Tài khoản · quyền xem</th><th>Online lần cuối</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
     box.querySelectorAll('[data-save]').forEach(b => b.onclick = () => savePerms(b));
@@ -513,9 +657,9 @@ async function renderAdminList() {
 
     const logs = (lj.logins || []).slice(0, 20);
     $('#login-log').innerHTML = logs.length
-      ? `<table class="utable"><tbody>${logs.map(x => `<tr><td><b>${x.u}</b></td><td class="muted" style="text-align:right;white-space:nowrap">${fmtWhen(x.at)}</td></tr>`).join('')}</tbody></table>`
+      ? `<table class="utable"><tbody>${logs.map(x => `<tr><td><b>${esc(x.u)}</b></td><td class="muted" style="text-align:right;white-space:nowrap">${fmtWhen(x.at)}</td></tr>`).join('')}</tbody></table>`
       : '<div class="muted" style="font-size:13px">Chưa ghi được lượt đăng nhập nào.</div>';
-  } catch (e) { box.innerHTML = `<div class="err">${e.message}</div>`; }
+  } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 async function logoutAll() {
   if (!confirm('Đăng xuất TẤT CẢ tài khoản? Mọi người (trừ anh) sẽ phải đăng nhập lại.')) return;
@@ -654,7 +798,7 @@ function renderPos(p) {
   const h = p.hourly || [];
   const max = Math.max(1, ...h);
   $('#pos-chart').innerHTML = h.map((v,i) =>
-    `<div class="bar" style="height:${(v/max*100).toFixed(1)}%"><span class="tip">${i}h · ${money(v)}</span></div>`
+    `<div class="bar" tabindex="0" aria-label="${i}h · ${money(v)}" style="height:${(v/max*100).toFixed(1)}%"><span class="tip">${i}h · ${money(v)}</span></div>`
   ).join('');
   $('#pos-chartx').innerHTML = h.map((_,i)=> `<span>${i%2===0 ? i+'h' : ''}</span>`).join('');
 }
@@ -702,7 +846,7 @@ function renderBreakdowns(b) {
   }
   const src = [...groups.values()].sort((a, b2) => b2.doanhThu - a.doanhThu);
   $('#pos-source').innerHTML = src.map(g => `
-    <tr><td style="text-align:left">${g.plat}</td>
+    <tr><td style="text-align:left">${esc(g.plat)}</td>
     <td>${money(g.doanhThu)}${arrow(g.doanhThu, g.p.doanhThu)}</td>
     <td>${money(g.loiNhuan)}</td>
     <td>${money(g.doanhSo)}${arrow(g.doanhSo, g.p.doanhSo)}</td>
@@ -713,7 +857,7 @@ function renderBreakdowns(b) {
 
   // Sản phẩm — top 15 by revenue
   $('#pos-product').innerHTML = (b.product || []).slice(0, 15).map(r => `
-    <tr><td style="text-align:left"><div class="pname">${r.name}${r.code ? `<small>${r.code}</small>` : ''}</div></td>
+    <tr><td style="text-align:left"><div class="pname">${esc(r.name)}${r.code ? `<small>${esc(r.code)}</small>` : ''}</div></td>
     <td>${money(r.doanhThu)}${arrow(r.doanhThu, r.prev.doanhThu)}</td>
     <td>${fmt(r.returnedQty)}</td>
     <td>${fmt(r.slBan)}${arrow(r.slBan, r.prev.slBan)}</td>
@@ -721,7 +865,7 @@ function renderBreakdowns(b) {
 
   // Nhân viên (POS) — by revenue
   $('#pos-staff').innerHTML = (b.staff || []).map(r => `
-    <tr><td style="text-align:left">${r.name}</td>
+    <tr><td style="text-align:left">${esc(r.name)}</td>
     <td>${money(r.doanhThu)}${arrow(r.doanhThu, r.prev.doanhThu)}</td>
     <td>${money(r.doanhSo)}</td>
     <td>${money(r.chietKhau)}</td>
@@ -825,7 +969,7 @@ function renderTeams(j) {
       .sort((a,b) => b.doanhThu - a.doanhThu || b.donChot - a.donChot);
     const shown = mems.slice(0, 10);
     const rows = shown.map(m => `
-      <tr><td style="text-align:left">${m.name}</td>
+      <tr><td style="text-align:left">${esc(m.name)}</td>
       <td>${money(m.doanhThu)}</td>
       <td${m.loiNhuan < 0 ? ' style="color:#f87171"' : ''}>${money(m.loiNhuan)}</td>
       <td>${fmt(m.donChot)}</td>
@@ -986,7 +1130,7 @@ function render(j) {
   rows.forEach((x, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="rank">${i+1}</span>${x.name}</td>
+      <td><span class="rank">${i+1}</span>${esc(x.name)}</td>
       <td>${fmt(x.privateReply)}</td>
       <td>${fmt(x.comment)}</td>
       <td>${fmt(x.commentSession)}</td>
@@ -1029,9 +1173,8 @@ function switchView(v) {
 document.querySelectorAll('#view-tabs .tab').forEach(b => b.onclick = () => switchView(b.dataset.view));
 
 // ─── Events ───
-$('#b-login').onclick = doLogin;
-$('#l-user').onkeydown = e => { if (e.key === 'Enter') $('#l-pass').focus(); };
-$('#l-pass').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+$('#login').onsubmit = e => { e.preventDefault(); doLogin(); };   // form thật: Enter hay bấm nút đều gửi đúng 1 lần
+$('#l-user').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('#l-pass').focus(); } };
 $('#b-logout').onclick = doLogout;
 $('#b-loadpages').onclick = loadPages;
 $('#b-start').onclick = saveConfig;
@@ -1049,13 +1192,19 @@ async function makeWpPair() {
     if (!r.ok) throw new Error(j.error || 'Lỗi');
     out.innerHTML = '<div class="fld" style="margin-bottom:6px;"><label>Link CỐ ĐỊNH — dán vào Lively 1 lần, dùng mãi (tự đăng nhập + bản sạch):</label>'
       + '<input id="wp-pair-url" type="text" readonly style="font-size:12px"></div>'
-      + '<button class="btn ghost sm" id="b-wp-copy">📋 Copy link</button>';
+      + '<button class="btn ghost sm" id="b-wp-copy" type="button">Copy link</button>';
     const el = $('#wp-pair-url'); el.value = j.url; el.focus(); el.select();
     $('#b-wp-copy').onclick = () => { el.select(); (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject())
       .then(() => { $('#b-wp-copy').textContent = '✓ Đã copy'; }, () => { document.execCommand('copy'); $('#b-wp-copy').textContent = '✓ Đã copy'; }); };
   } catch (e) { out.textContent = '⚠️ ' + e.message; }
 }
 $('#b-wp-pair').onclick = makeWpPair;
+// Điện thoại: chạm cột biểu đồ → hiện số giờ đó (chạm lại / chạm chỗ khác → ẩn). Chỉ hiển thị, không đổi số.
+$('#pos-chart').addEventListener('click', e => {
+  const b = e.target.closest('.bar');
+  document.querySelectorAll('#pos-chart .bar.on').forEach(x => { if (x !== b) x.classList.remove('on'); });
+  if (b) b.classList.toggle('on');
+});
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0,10);
@@ -1075,10 +1224,15 @@ document.querySelectorAll('.dater .quick button').forEach(b => b.onclick = () =>
   else if (r === '7d') applyRange(addDays(t, -6), t);
   else if (r === 'month') applyRange(t.slice(0,8) + '01', t);
 });
-document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
-  const k = th.dataset.k;
-  if (S.sort === k) S.desc = !S.desc; else { S.sort = k; S.desc = true; }
-  if (S.last) render(S.last);
+// Chỉ cột có data-k mới sắp xếp được (trước đây bấm tiêu đề bảng POS làm lệch thứ tự bảng NV); dùng được bằng bàn phím
+document.querySelectorAll('thead th[data-k]').forEach(th => {
+  th.tabIndex = 0; th.setAttribute('role', 'button');
+  th.onclick = () => {
+    const k = th.dataset.k;
+    if (S.sort === k) S.desc = !S.desc; else { S.sort = k; S.desc = true; }
+    if (S.last) render(S.last);
+  };
+  th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); th.onclick(); } };
 });
 
 // ─── Tự cuộn (auto-scroll) cho hình nền — chạy trong trang, không cần Lively forward chuột ───
