@@ -248,6 +248,36 @@
     table { font-size: 13px; }
   }
 
+  /* ── Lướt tới đâu hiện tới đó (reveal.js) — chỉ transform + opacity; reveal.js tự tắt khi máy bật "giảm chuyển động" ── */
+  :root { --rv-ease: cubic-bezier(.16, 1, .3, 1); }
+  html.rv-on .rv-wait, html.rv-on tr.rv-hold { opacity: 0; }
+  .rv-self, .rv-kid { animation: rvUp .8s var(--rv-ease) both; animation-delay: var(--d, 0ms); }
+  .rv-row { animation: rvRow .6s var(--rv-ease) both; animation-delay: var(--d, 0ms); }
+  .rv-bar { transform-origin: 50% 100%; animation: rvGrow .95s var(--rv-ease) both; animation-delay: var(--d, 0ms); }
+  @keyframes rvUp { from { opacity: 0; transform: translateY(20px) scale(.985); } to { opacity: 1; transform: none; } }
+  @keyframes rvRow { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes rvGrow { from { transform: scaleY(0); } to { transform: none; } }
+  /* Số vừa đổi khi cập nhật realtime → nền vàng loé nhẹ rồi tắt (lớp phủ chỉ đổi opacity) */
+  .rv-tick { position: relative; }
+  .rv-tick::after { content: ''; position: absolute; inset: -3px -7px; border-radius: 7px; background: rgba(246,195,68,.17);
+    pointer-events: none; opacity: 0; animation: rvTick 1.6s var(--rv-ease); }
+  td.rv-tick::after { inset: 1px; border-radius: 6px; }
+  @keyframes rvTick { 0%, 25% { opacity: 1; } to { opacity: 0; } }
+  /* Đang tải khoảng ngày vừa chọn → mờ nhẹ số cũ */
+  #dash :is(#pos-top, #pos-kpi, .chartwrap, .panel, #teamgrid, #kenhlive-cards, #cards) { transition: opacity .3s var(--rv-ease); }
+  #dash.rv-busy :is(#pos-top, #pos-kpi, .chartwrap, .panel, #teamgrid, #kenhlive-cards, #cards):not(.rv-wait) { opacity: .45; }
+  /* Thanh tiến độ cuộn 2px trên cùng (trình duyệt hỗ trợ scroll-timeline) */
+  @supports (animation-timeline: scroll()) {
+    html.rv-on body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 30; pointer-events: none;
+      background: linear-gradient(90deg, rgba(246,195,68,.25), var(--accent)); transform-origin: 0 50%; transform: scaleX(0);
+      animation: rvProgress linear both; animation-timeline: scroll(root block); }
+    @keyframes rvProgress { to { transform: scaleX(1); } }
+  }
+  @media print {
+    html.rv-on .rv-wait, html.rv-on tr.rv-hold { opacity: 1 !important; }
+    html.rv-on body::before { display: none; }
+  }
+
   /* ── Giảm chuyển động theo cài đặt máy ── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
@@ -505,6 +535,8 @@
   <!-- /VIEW B -->
 </div>
 
+<!-- Chuyển động khi lướt + số chạy realtime: chỉ quan sát trang, không đụng số (nạp trước script chính) -->
+<script src="/reveal.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 // Làm sạch chuỗi (tên NV / sản phẩm / page…) trước khi chèn vào HTML — chống chèn mã. Không đụng số.
