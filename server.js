@@ -828,11 +828,19 @@ async function fbGetJson(url) {
 // time_range inclusive 2 đầu → khớp đúng ngày Pancake đang hiển thị.
 // Cache danh sách tài khoản QC + chi tiêu ads → KHÔNG gọi Meta mỗi 30s (tránh
 // rate-limit 80004 "too many calls to this ad-account").
+// Tài khoản KHÔNG phải của YOLO (agency/đối tác chạy hộ) — loại khỏi mọi tổng chi ads,
+// giống HIDDEN_ACCOUNTS bên fb-dashboard để 2 dashboard khớp số. Thêm qua env
+// HIDDEN_ACCOUNTS="act_x,act_y" trên Railway khỏi sửa code.
+const HIDDEN_ACCOUNTS = new Set([
+  'act_1095233852787712',   // sh agency HSB +7 USD - anh Đại NMT
+  'act_1148220730816849',   // BM4 - TK3 — camp khách agency (kho sỉ, cá khô, tạp hoá…)
+  ...String(process.env.HIDDEN_ACCOUNTS || '').split(',').map(s => s.trim()).filter(Boolean),
+]);
 let _fbAccounts = { at: 0, val: null };
 async function getFbAccountsCached() {
   if (_fbAccounts.val && Date.now() - _fbAccounts.at < 600000) return _fbAccounts.val;  // 10 phút
-  _fbAccounts = { at: Date.now(), val: (await fbGetJson(`${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
-    + `&access_token=${encodeURIComponent(FB_TOKEN)}`)).data || [] };
+  _fbAccounts = { at: Date.now(), val: ((await fbGetJson(`${FB_GRAPH}/me/adaccounts?fields=id,currency&limit=100`
+    + `&access_token=${encodeURIComponent(FB_TOKEN)}`)).data || []).filter(a => !HIDDEN_ACCOUNTS.has(a.id)) };
   return _fbAccounts.val;
 }
 const _adSpendCache = new Map();
