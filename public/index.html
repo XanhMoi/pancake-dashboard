@@ -237,6 +237,21 @@
   .mtable td.c-rev .bar { display: block; height: 3px; margin-top: 5px; border-radius: 2px; background: rgba(255,255,255,.06); }
   .mtable td.c-rev .bar i { display: block; height: 100%; border-radius: inherit; background: var(--tc); opacity: .85; }
   .mtable td.c-empty { text-align: center; padding: 18px; font-weight: 400; }
+  /* Ô Ads Mess (nhóm Tư vấn) — nằm dưới số tổng, lấp khoảng trống cột trái */
+  .tads { margin-top: 10px; padding: 13px 14px 8px; border: 1px solid var(--line); border-radius: 12px;
+    background: color-mix(in srgb, var(--tc) 5%, transparent); }
+  .tads-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 11px; }
+  .tads-t { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+  .tads .tads-k { padding: 0; border: 0; border-radius: 0; margin-bottom: 10px; }
+  .ctable { width: 100%; table-layout: fixed; background: transparent; border-radius: 0; }
+  .ctable thead th { background: transparent; border-bottom: 1px solid var(--line2); padding: 7px 6px; font-size: 11px; }
+  .ctable thead th:first-child { padding-left: 0; }
+  .ctable th:nth-child(2), .ctable td:nth-child(2) { width: 22%; }
+  .ctable th:nth-child(3), .ctable td:nth-child(3) { width: 15%; }
+  .ctable th:nth-child(4), .ctable td:nth-child(4) { width: 22%; }
+  .ctable tbody td { padding: 7px 6px; font-size: 12.5px; white-space: nowrap; }
+  .ctable tbody tr:first-child td { border-top: 0; }
+  .ctable td.c-camp { padding-left: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
   @container team (min-width: 900px) {
     .tlay { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
   }
@@ -1072,6 +1087,33 @@ function renderTeams(j) {
       <td class="c-sub" data-l="SĐT">${fmt(m.sdt)}</td>` : ''}</tr>`).join('')
       || `<tr><td colspan="${ncol}" class="muted c-empty">Chưa có số liệu trong kỳ này</td></tr>`;
 
+    // Ô "Ads Mess" (chỉ nhóm Tư vấn) — cùng số tab "Chạy Mess" fb-dashboard: chi ads, tin nhắn,
+    // giá/tin nhắn, chi ads/doanh thu, chi ads/đơn + từng campaign
+    const ma = t.team === 'Tư vấn' ? j.messAds : null;
+    let adsPanel = '';
+    if (ma) {
+      const camps = ma.campaigns || [];
+      const shownC = camps.slice(0, 8), restC = camps.slice(8);
+      const restSpend = restC.reduce((s, c) => s + c.spend, 0);
+      const crow = c => `<tr><td class="c-camp" title="${esc(c.name)}">${esc(c.name)}</td>
+        <td>${moneyShort(c.spend)}</td><td>${fmt(c.inbox)}</td>
+        <td>${c.inbox > 0 ? moneyShort(c.spend / c.inbox) : '—'}</td></tr>`;
+      adsPanel = `<section class="tads" aria-label="Ads Mess">
+        <div class="tads-h"><span class="tads-t">Ads Mess</span><span class="tsub">${camps.length} campaign</span></div>
+        <div class="tstats tads-k">
+          ${kpi('Chi ads Mess', money(ma.spend))}
+          ${kpi('Tin nhắn', fmt(ma.inbox))}
+          ${kpi('Giá / tin nhắn', ma.inbox > 0 ? money(ma.spend / ma.inbox) : '—')}
+          ${kpi('Chi ads / doanh thu', t.doanhThu > 0 ? pct(ma.spend / t.doanhThu * 100) : '—')}
+          ${kpi('Chi ads / đơn', t.donChot > 0 ? money(ma.spend / t.donChot) : '—')}
+          ${kpi('Đơn / tin nhắn', ma.inbox > 0 ? pct(t.donChot / ma.inbox * 100) : '—')}
+        </div>
+        ${camps.length ? `<table class="ctable"><thead><tr><th>Campaign</th><th>Chi</th><th>Tin nhắn</th><th>Giá/TN</th></tr></thead>
+          <tbody>${shownC.map(crow).join('')}</tbody></table>
+          ${restC.length ? `<p class="tnote">… và ${restC.length} campaign khác, chi ${money(restSpend)}.</p>` : ''}` : ''}
+      </section>`;
+    }
+
     const lsa = teamAds != null ? t.loiNhuan - teamAds : null;
     const hero = [
       kpi('Doanh thu', money(t.doanhThu), arrow(t.doanhThu, t.pDoanhThu)),
@@ -1089,13 +1131,14 @@ function renderTeams(j) {
         <div class="tside">
           <div class="thero${hero.length === 3 ? ' n3' : ''}">${hero.join('')}</div>
           <div class="tstats">
-            ${teamAds != null ? kpi(adsLabel, money(teamAds)) : ''}
+            ${teamAds != null && !adsPanel ? kpi(adsLabel, money(teamAds)) : ''}
             ${kpi('Đơn chốt', fmt(t.donChot), arrow(t.donChot, t.pDonChot))}
             ${kpi('Tỉ lệ chốt', pct(tyLe))}
             ${kpi('GTTB', money(gttb))}
             ${kpi('SL bán', fmt(t.slBan))}
             ${hasChat ? kpi('Tương tác', fmt(t.tuongTac)) + kpi('SĐT mang về', fmt(t.sdt)) : ''}
           </div>
+          ${adsPanel}
           ${adsNote}
         </div>
         <div class="tmain">

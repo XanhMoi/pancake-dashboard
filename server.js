@@ -833,6 +833,7 @@ async function fbGetJson(url) {
 // HIDDEN_ACCOUNTS="act_x,act_y" trên Railway khỏi sửa code.
 const HIDDEN_ACCOUNTS = new Set([
   'act_1095233852787712',   // sh agency HSB +7 USD - anh Đại NMT
+  'act_1540661276962905',   // BM4 - tk2 — fb-dashboard đã ẩn (commit 9e7da6d), ẩn theo để khớp
   'act_1148220730816849',   // BM4 - TK3 — camp khách agency (kho sỉ, cá khô, tạp hoá…)
   ...String(process.env.HIDDEN_ACCOUNTS || '').split(',').map(s => s.trim()).filter(Boolean),
 ]);
@@ -939,30 +940,51 @@ async function fetchLiveDaiSpendTotal(from, to) {
   return val;
 }
 
-// Tổng chi ads MESS (VND) = mọi campaign KHÔNG phải Live Đại — cùng kỳ, cache 5'.
-// Nguồn cho thẻ "Chi ads Mess" + "LN sau ads" của block Nhóm Tư vấn.
-const _messSpendCache = new Map();
-async function fetchMessSpendTotal(from, to) {
+// Ads MESS = mọi campaign KHÔNG phải Live Đại — cùng kỳ, cache 5'.
+// Nguồn cho thẻ "Chi ads Mess" + "LN sau ads" + ô "Ads Mess" của block Nhóm Tư vấn.
+// Tin nhắn = `onsite_conversion.messaging_conversation_started_7d` — ĐÚNG cột "Tin nhắn" tab
+// "Chạy Mess" của fb-dashboard (cùng định nghĩa Mess = trừ Live Đại) → 2 dashboard khớp số.
+// → { spend, inbox, campaigns: [{ name, spend, inbox }] } (spend VND, campaign xếp theo chi giảm dần)
+const INBOX_ACTION = 'onsite_conversion.messaging_conversation_started_7d';
+const _messAdsCache = new Map();
+async function fetchMessAdsDetail(from, to) {
   if (!FB_TOKEN) return null;
-  const key = `${from}_${to}`, c = _messSpendCache.get(key);
+  const key = `${from}_${to}`, c = _messAdsCache.get(key);
   if (c && Date.now() - c.at < 300000) return c.val;   // 5 phút
   const accounts = await getFbAccountsCached();
   const timeRange = JSON.stringify({ since: from, until: to });
-  let mess = 0;
+  const camps = new Map();
   await Promise.all(accounts.map(async a => {
     try {
-      const url = `${FB_GRAPH}/${a.id}/insights?level=campaign&fields=campaign_name,spend`
+      const url = `${FB_GRAPH}/${a.id}/insights?level=campaign&fields=campaign_id,campaign_name,spend,actions`
         + `&time_range=${encodeURIComponent(timeRange)}&limit=500&access_token=${encodeURIComponent(FB_TOKEN)}`;
       const rows = await fbGetAllPages(url);
       for (const r of rows) {
         if (isLiveDai(r.campaign_name)) continue;   // Mess = KHÔNG phải Live Đại
-        mess += toVnd(parseFloat(r.spend || 0), a.currency || 'VND');
+        const spend = toVnd(parseFloat(r.spend || 0), a.currency || 'VND');
+        const act = (r.actions || []).find(x => x.action_type === INBOX_ACTION);
+        const inbox = act ? Number(act.value) || 0 : 0;
+        const k = r.campaign_id || `${a.id}:${r.campaign_name}`;
+        const cur = camps.get(k) || { name: r.campaign_name || '(không tên)', spend: 0, inbox: 0 };
+        cur.spend += spend; cur.inbox += inbox;
+        camps.set(k, cur);
       }
     } catch (_) { /* bỏ qua account lỗi */ }
   }));
-  const val = Math.round(mess);
-  _messSpendCache.set(key, { at: Date.now(), val });
+  const campaigns = [...camps.values()].filter(x => x.spend > 0 || x.inbox > 0)
+    .map(x => ({ ...x, spend: Math.round(x.spend) }))
+    .sort((x, y) => y.spend - x.spend);
+  const val = {
+    spend: campaigns.reduce((s, x) => s + x.spend, 0),
+    inbox: campaigns.reduce((s, x) => s + x.inbox, 0),
+    campaigns,
+  };
+  _messAdsCache.set(key, { at: Date.now(), val });
   return val;
+}
+async function fetchMessSpendTotal(from, to) {
+  const d = await fetchMessAdsDetail(from, to);
+  return d ? d.spend : null;
 }
 
 // ─── NHÓM SALE lấy THẲNG từ Pancake (User.sale_group) ──────────────────────────
@@ -1135,7 +1157,7 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
       return null;
     });
     // Chi ads Mess (mọi campaign KHÔNG phải Live Đại) — CÙNG KỲ — cho Nhóm Tư vấn
-    const messP = fetchMessSpendTotal(fromStr, toStr).catch(e => {
+    const messP = fetchMessAdsDetail(fromStr, toStr).catch(e => {
       console.error('Mess spend:', e.message);
       return null;
     });
@@ -1148,7 +1170,7 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
         })
       : Promise.resolve(null);
 
-    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend, messAdSpend, saleGroups] =
+    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend, messAds, saleGroups] =
       await Promise.all([engP, userP, posP, ovP, brkP, adP, liveAdP, messP, sgP]);
     const out = buildMetrics(engRes, posRes, userStats);
     out.posOverview = buildPosOverview(posOv);
@@ -1164,14 +1186,15 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
     }
     out.adSpend = adSpend;
     out.liveDaiAdSpend = liveDaiAdSpend;
-    out.messAdSpend = messAdSpend;
+    out.messAdSpend = messAds ? messAds.spend : null;
+    out.messAds = messAds;   // chi tiết: inbox + từng campaign (ô "Ads Mess" nhóm Tư vấn)
 
     // ─── Lọc theo quyền: chỉ trả dữ liệu của mục user được xem ───
     if (!perms.pos && !perms.nhomSale) { out.posOverview = null; out.posBreakdowns = null; out.adSpend = null; }
     if (!perms.chat && !perms.nhomSale) { out.staffDetail = []; out.staff = []; }
     if (!perms.pos) out.adSpend = null;
     if (!(perms.live || perms.pos)) out.liveDaiAdSpend = null;   // chi ads Live Đại: chỉ ai xem được Live/POS
-    if (!(perms.nhomSale || perms.pos)) out.messAdSpend = null;  // chi ads Mess: chỉ ai xem được nhóm sale/POS
+    if (!(perms.nhomSale || perms.pos)) { out.messAdSpend = null; out.messAds = null; }  // chi ads Mess: chỉ ai xem được nhóm sale/POS
 
     console.log(`[${new Date().toLocaleTimeString('vi-VN')}] ${dateStr} — `
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `
