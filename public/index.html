@@ -251,7 +251,10 @@
   .ctable th:nth-child(4), .ctable td:nth-child(4) { width: 22%; }
   .ctable tbody td { padding: 7px 6px; font-size: 12.5px; white-space: nowrap; }
   .ctable tbody tr:first-child td { border-top: 0; }
-  .ctable td.c-camp { padding-left: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+  .ctable td.c-camp { padding-left: 0; font-weight: 500; white-space: normal; text-align: left; }
+  .ctable td.c-camp .cn { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    overflow-wrap: anywhere; line-height: 1.35; }
+  .ctable tbody td:not(.c-camp) { vertical-align: top; }
   @container team (min-width: 900px) {
     .tlay { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
   }
@@ -1095,7 +1098,7 @@ function renderTeams(j) {
       const camps = ma.campaigns || [];
       const shownC = camps.slice(0, 8), restC = camps.slice(8);
       const restSpend = restC.reduce((s, c) => s + c.spend, 0);
-      const crow = c => `<tr><td class="c-camp" title="${esc(c.name)}">${esc(c.name)}</td>
+      const crow = c => `<tr><td class="c-camp" title="${esc(c.name)}"><span class="cn">${esc(c.name)}</span></td>
         <td>${moneyShort(c.spend)}</td><td>${fmt(c.inbox)}</td>
         <td>${c.inbox > 0 ? moneyShort(c.spend / c.inbox) : '—'}</td></tr>`;
       adsPanel = `<section class="tads" aria-label="Ads Mess">
