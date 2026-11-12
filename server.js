@@ -1187,14 +1187,13 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
     out.adSpend = adSpend;
     out.liveDaiAdSpend = liveDaiAdSpend;
     out.messAdSpend = messAds ? messAds.spend : null;
-    out.messAds = messAds;   // chi tiết: inbox + từng campaign (ô "Ads Mess" nhóm Tư vấn)
 
     // ─── Lọc theo quyền: chỉ trả dữ liệu của mục user được xem ───
     if (!perms.pos && !perms.nhomSale) { out.posOverview = null; out.posBreakdowns = null; out.adSpend = null; }
     if (!perms.chat && !perms.nhomSale) { out.staffDetail = []; out.staff = []; }
     if (!perms.pos) out.adSpend = null;
     if (!(perms.live || perms.pos)) out.liveDaiAdSpend = null;   // chi ads Live Đại: chỉ ai xem được Live/POS
-    if (!(perms.nhomSale || perms.pos)) { out.messAdSpend = null; out.messAds = null; }  // chi ads Mess: chỉ ai xem được nhóm sale/POS
+    if (!(perms.nhomSale || perms.pos)) out.messAdSpend = null;  // chi ads Mess: chỉ ai xem được nhóm sale/POS
 
     console.log(`[${new Date().toLocaleTimeString('vi-VN')}] ${dateStr} — `
       + `${out.summary.staffCount} NV | ${out.summary.totalInteractions} TT | `
