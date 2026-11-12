@@ -196,18 +196,69 @@
   @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
   /* ── Dashboard theo nhóm sale ── */
-  .teamgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%),1fr)); gap: 14px; margin-bottom: 8px; }
-  .teamblock { background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--r);
-    padding: 15px; min-width: 0; box-shadow: var(--shadow); }
-  .teamblock .thead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 11px; }
-  .teamblock .tname { font-weight: 700; font-size: 15.5px; letter-spacing: -.01em; }
-  .teamblock .tname .dot2 { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 8px; vertical-align: 1px; }
-  .teamblock .tsub { font-size: 11.5px; color: var(--mut); }
-  .teamblock .posbar { margin-bottom: 12px; }
-  .teamblock table { font-size: 12.5px; background: transparent; }
-  .teamblock thead th { background: rgba(255,255,255,.03); }
-  .teamblock th, .teamblock td { padding: 7px 9px; }
-  .teamblock .more { font-size: 11.5px; color: var(--mut); margin-top: 7px; }
+  /* Mỗi nhóm 1 hàng ngang cả màn hình — không còn 3 khung hẹp làm bảng tràn ra ngoài.
+     Bố cục theo BỀ RỘNG KHUNG (@container) nên máy tính / máy tính bảng / điện thoại tự đổi:
+     ≥ 900px: cột số tổng bên trái + bảng NV bên phải · < 900px: xếp chồng · < 640px: bảng thành thẻ. */
+  .teamgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 8px; }
+  .teamblock { --tc: var(--accent); container: team / inline-size; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 18px 20px 14px; min-width: 0; box-shadow: var(--shadow); }
+  .teamblock::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--tc); opacity: .8; }
+  .teamblock .thead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .teamblock .tname { font-weight: 700; font-size: 16.5px; letter-spacing: -.015em; display: flex; align-items: center; }
+  .teamblock .tname .dot2 { width: 10px; height: 10px; border-radius: 3px; margin-right: 9px; background: var(--tc); flex: none; }
+  .teamblock .tsub { font-size: 12px; font-weight: 600; color: var(--mut); background: var(--card3); border: 1px solid var(--line);
+    border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+  .tlay { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .tside, .tmain { min-width: 0; }
+  .thero { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .thero.n3 .k:first-child { grid-column: 1 / -1; }
+  .thero .k { background: rgba(255,255,255,.028); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .thero .k .lab, .tstats .k .lab { font-size: 11.5px; font-weight: 500; color: var(--mut); margin-bottom: 5px; }
+  .thero .k .v { font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1.25; overflow-wrap: anywhere; }
+  .thero .k:first-child .v { font-size: 23px; }
+  .k .sub2 { display: block; font-size: 12px; font-weight: 500; color: var(--mut); letter-spacing: 0; margin-top: 3px; }
+  .tstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; padding: 13px 14px;
+    border: 1px solid var(--line); border-radius: 12px; }
+  .tstats .k { min-width: 0; }
+  .tstats .k .v { font-size: 15px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .tstats .chg, .thero .chg { display: inline-block; margin-left: 4px; }
+  .neg { color: var(--red); }
+  .tnote { font-size: 12px; color: var(--mut); line-height: 1.5; margin-top: 9px; text-wrap: pretty; }
+  /* Bảng nhân viên */
+  .mtable { width: 100%; background: transparent; border-radius: 0; }
+  .mtable thead th { background: transparent; border-bottom: 1px solid var(--line2); padding: 8px 10px; font-size: 11.5px; }
+  .mtable thead th:first-child { padding-left: 4px; }
+  .mtable tbody td { padding: 9px 10px; font-size: 13.5px; white-space: nowrap; }
+  .mtable tbody tr:first-child td { border-top: 0; }
+  .mtable td.c-name { padding-left: 4px; font-weight: 600; }
+  .mtable td.c-name .rank { min-width: 1.6em; margin-right: 6px; }
+  .mtable td.c-rev { font-weight: 650; }
+  .mtable td.c-rev .bar { display: block; height: 3px; margin-top: 5px; border-radius: 2px; background: rgba(255,255,255,.06); }
+  .mtable td.c-rev .bar i { display: block; height: 100%; border-radius: inherit; background: var(--tc); opacity: .85; }
+  .mtable td.c-empty { text-align: center; padding: 18px; font-weight: 400; }
+  @container team (min-width: 900px) {
+    .tlay { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
+  }
+  /* Khung hẹp (điện thoại): mỗi NV là 1 thẻ — dòng 1 tên + doanh thu, dòng 2 các chỉ số phụ */
+  @container team (max-width: 640px) {
+    .thero .k:first-child .v { font-size: 21px; }
+    .thero .k .v { font-size: 17px; }
+    .tstats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mtable thead { display: none; }
+    .mtable, .mtable tbody { display: block; }
+    .mtable tbody tr { display: flex; flex-wrap: wrap; align-items: baseline; padding: 11px 2px; border-top: 1px solid var(--line); }
+    .mtable tbody tr:first-child { border-top: 0; }
+    .mtable tbody tr:hover { background: transparent; }
+    .mtable tbody td { border: 0; padding: 0; }
+    .mtable td.c-name { flex: 1 0 calc(100% - 136px); min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 14.5px; }
+    .mtable td.c-rev { flex: 0 0 136px; font-size: 14.5px; font-weight: 700; }
+    .mtable td.c-rev .bar { margin-left: auto; width: 100%; }
+    .mtable td.c-sub { flex: none; margin: 6px 14px 0 0; font-size: 12.5px; color: var(--txt); text-align: left; }
+    .mtable td.c-sub:nth-child(3) { margin-left: calc(1.6em + 6px); }
+    .mtable td.c-sub::before { content: attr(data-l) ' '; color: var(--mut); font-weight: 500; }
+    .mtable td.c-sub.neg { color: var(--red); }
+  }
 
   /* ── Chọn ngày ── */
   .dater { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -243,8 +294,7 @@
     .setup { padding: 26px 20px; margin-top: 6vh; }
     .topbar h1 { font-size: 18px; }
     .c .val { font-size: 22px; }
-    .teamgrid { grid-template-columns: 1fr; }
-    .teamblock table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .teamblock { padding: 16px 14px 10px; }
     table { font-size: 13px; }
   }
 
@@ -447,6 +497,7 @@
   <!-- Dashboard con theo nhóm sale (CSKH · Live · Tư vấn) -->
   <div id="teams-section" class="hidden">
     <h2 class="sec-title" style="margin-top:0"><svg class="ic"><use href="#i-grid"/></svg>Dashboard theo nhóm sale</h2>
+    <p class="tnote hidden" id="teams-note" style="margin:-4px 0 12px"></p>
     <div class="teamgrid" id="teamgrid"></div>
   </div>
 
@@ -977,6 +1028,13 @@ function renderTeams(j) {
   const any = teams.some(t => t.donChot || t.doanhThu || t.tuongTac);
   if (!any) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
+  // Không có số chat (token chat Pancake hết hạn / không có quyền) → ẩn cột Tương tác, SĐT thay vì hiện toàn 0
+  const hasChat = (j.staff || []).length > 0 || (j.staffDetail || []).length > 0;
+  const note = $('#teams-note');
+  if (note) {
+    note.textContent = hasChat ? '' : 'Đang ẩn Tương tác và SĐT: chưa lấy được số chat Pancake (token chat hết hạn, admin nhập lại trong Cấu hình).';
+    note.classList.toggle('hidden', hasChat);
+  }
 
   grid.innerHTML = teams.map(t => {
     // Nhóm "Khác" (nhân viên chưa gán nhóm) không hiển thị
@@ -989,57 +1047,65 @@ function renderTeams(j) {
     const active = [...t.members.values()].filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt).length;
 
     // Ads theo nhóm: Live → Live Đại (lệch +1 ngày); Tư vấn → Mess (cùng kỳ). LN sau ads = LN − ads.
-    let teamAds = null, adsLabel = '', adsKpis = '', adsNote = '';
+    let teamAds = null, adsLabel = '', adsNote = '';
     if (t.team === 'Live') {
       teamAds = j.liveDaiAdSpend; adsLabel = 'Chi ads Live Đại';
-      adsNote = `<div class="more">↔ Ads lệch +1 ngày: chi ads = Live Đại ngày trước (tạo ra doanh thu kỳ này)</div>`;
+      adsNote = `<p class="tnote">Chi ads tính lệch +1 ngày: ads Live Đại ngày trước tạo ra doanh thu kỳ này.</p>`;
     } else if (t.team === 'Tư vấn') {
       teamAds = j.messAdSpend; adsLabel = 'Chi ads Mess';
-      adsNote = `<div class="more">↔ Chi ads Mess (mọi campaign trừ Live Đại) · cùng kỳ</div>`;
-    }
-    if (teamAds != null) {
-      const lsa = t.loiNhuan - teamAds;
-      const lsaPct = t.doanhThu > 0 ? (lsa / t.doanhThu) * 100 : 0;
-      adsKpis = kpi(adsLabel, money(teamAds))
-        + kpi('LN sau ads', `<span${lsa < 0 ? ' style="color:#f87171"' : ''}>${money(lsa)}</span> <span class="muted">(${pct(lsaPct)})</span>`);
+      adsNote = `<p class="tnote">Chi ads Mess = mọi campaign trừ Live Đại, cùng kỳ.</p>`;
     }
 
     const mems = [...t.members.values()]
       .filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt)
       .sort((a,b) => b.doanhThu - a.doanhThu || b.donChot - a.donChot);
-    const shown = mems.slice(0, 10);
-    const rows = shown.map(m => `
-      <tr><td style="text-align:left">${esc(m.name)}</td>
-      <td>${money(m.doanhThu)}</td>
-      <td${m.loiNhuan < 0 ? ' style="color:#f87171"' : ''}>${money(m.loiNhuan)}</td>
-      <td>${fmt(m.donChot)}</td>
-      <td>${pct(m.totalOrder > 0 ? (m.donChot/m.totalOrder)*100 : 0)}</td>
-      <td>${fmt(m.tuongTac)}</td>
-      <td>${fmt(m.sdt)}</td></tr>`).join('') || `<tr><td colspan="7" class="muted" style="text-align:center">— chưa có số liệu —</td></tr>`;
+    const top = Math.max(1, ...mems.map(m => m.doanhThu));
+    const ncol = hasChat ? 7 : 5;
+    // Mỗi NV 1 dòng; máy tính = bảng, điện thoại = thẻ (CSS @container, cùng 1 markup)
+    const rows = mems.map((m, i) => `
+      <tr><td class="c-name"><span class="rank">${i + 1}</span>${esc(m.name)}</td>
+      <td class="c-rev"><span class="num">${money(m.doanhThu)}</span><span class="bar" aria-hidden="true"><i style="width:${Math.max(0, m.doanhThu / top * 100).toFixed(1)}%"></i></span></td>
+      <td class="c-sub${m.loiNhuan < 0 ? ' neg' : ''}" data-l="LN">${money(m.loiNhuan)}</td>
+      <td class="c-sub" data-l="Đơn">${fmt(m.donChot)}</td>
+      <td class="c-sub" data-l="Chốt">${pct(m.totalOrder > 0 ? (m.donChot/m.totalOrder)*100 : 0)}</td>
+      ${hasChat ? `<td class="c-sub" data-l="TT">${fmt(m.tuongTac)}</td>
+      <td class="c-sub" data-l="SĐT">${fmt(m.sdt)}</td>` : ''}</tr>`).join('')
+      || `<tr><td colspan="${ncol}" class="muted c-empty">Chưa có số liệu trong kỳ này</td></tr>`;
 
-    return `<div class="teamblock">
-      <div class="thead">
-        <span class="tname"><span class="dot2" style="background:${TEAM_COLOR[t.team]}"></span>Nhóm ${t.team}</span>
+    const lsa = teamAds != null ? t.loiNhuan - teamAds : null;
+    const hero = [
+      kpi('Doanh thu', money(t.doanhThu), arrow(t.doanhThu, t.pDoanhThu)),
+      kpi('Lợi nhuận', `${money(t.loiNhuan)}<span class="sub2">${pct(lnPct)} doanh thu</span>`, arrow(t.loiNhuan, t.pLoiNhuan)),
+    ];
+    if (lsa != null) hero.push(kpi('LN sau ads',
+      `<span class="${lsa < 0 ? 'neg' : ''}">${money(lsa)}</span><span class="sub2">${pct(t.doanhThu > 0 ? lsa / t.doanhThu * 100 : 0)} doanh thu</span>`));
+
+    return `<article class="teamblock" style="--tc:${TEAM_COLOR[t.team]}">
+      <header class="thead">
+        <h3 class="tname"><span class="dot2"></span>Nhóm ${t.team}</h3>
         <span class="tsub">${active}/${total} NV có số</span>
+      </header>
+      <div class="tlay">
+        <div class="tside">
+          <div class="thero${hero.length === 3 ? ' n3' : ''}">${hero.join('')}</div>
+          <div class="tstats">
+            ${teamAds != null ? kpi(adsLabel, money(teamAds)) : ''}
+            ${kpi('Đơn chốt', fmt(t.donChot), arrow(t.donChot, t.pDonChot))}
+            ${kpi('Tỉ lệ chốt', pct(tyLe))}
+            ${kpi('GTTB', money(gttb))}
+            ${kpi('SL bán', fmt(t.slBan))}
+            ${hasChat ? kpi('Tương tác', fmt(t.tuongTac)) + kpi('SĐT mang về', fmt(t.sdt)) : ''}
+          </div>
+          ${adsNote}
+        </div>
+        <div class="tmain">
+          <table class="mtable"><thead><tr>
+            <th>Nhân viên</th><th>Doanh thu</th><th>Lợi nhuận</th><th>Đơn</th><th>Tỉ lệ chốt</th>
+            ${hasChat ? '<th>Tương tác</th><th>SĐT</th>' : ''}
+          </tr></thead><tbody>${rows}</tbody></table>
+        </div>
       </div>
-      <div class="posbar">
-        ${kpi('Doanh thu', money(t.doanhThu), arrow(t.doanhThu, t.pDoanhThu))}
-        ${kpi('Lợi nhuận', money(t.loiNhuan)+` <span class="muted">(${pct(lnPct)})</span>`, arrow(t.loiNhuan, t.pLoiNhuan))}
-        ${adsKpis}
-        ${kpi('Đơn chốt', fmt(t.donChot), arrow(t.donChot, t.pDonChot))}
-        ${kpi('Tỉ lệ chốt', pct(tyLe))}
-        ${kpi('GTTB', money(gttb))}
-        ${kpi('Tương tác', fmt(t.tuongTac))}
-        ${kpi('SĐT mang về', fmt(t.sdt))}
-        ${kpi('SL bán', fmt(t.slBan))}
-      </div>
-      ${adsNote}
-      <table><thead><tr>
-        <th style="text-align:left">Nhân viên</th><th>Doanh thu</th><th>Lợi nhuận</th><th>Đơn</th>
-        <th>Tỉ lệ chốt</th><th>Tương tác</th><th>SĐT</th>
-      </tr></thead><tbody>${rows}</tbody></table>
-      ${mems.length > shown.length ? `<div class="more">… và ${mems.length - shown.length} NV khác</div>` : ''}
-    </div>`;
+    </article>`;
   }).join('');
 }
 
