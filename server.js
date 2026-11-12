@@ -965,13 +965,92 @@ async function fetchMessSpendTotal(from, to) {
   return val;
 }
 
-// Doanh thu/LN/đơn Nhóm Live theo từng ngày: { 'YYYY-MM-DD': {doanhThu,loiNhuan,donChot} }
-async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
-  const { since, until } = posBounds(from, to);
+// ─── NHÓM SALE lấy THẲNG từ Pancake (User.sale_group) ──────────────────────────
+// Trước đây nhóm = danh sách tên gõ tay trong public/index.html → NV mới vào không
+// được tính, NV đã nghỉ vẫn nằm trong nhóm. Giờ hỏi Pancake: analytics/sale tách theo
+// [User.sale_group, User.id] trả NHÓM HIỆN TẠI của từng NV (đã kiểm: 1 NV = 1 nhóm,
+// NV bị gỡ khỏi nhóm → null), đúng như bộ lọc "Nhóm sale" trên màn Tổng quan Pancake.
+// Đổi người giữa các nhóm trên Pancake là dashboard tự theo, KHÔNG cần sửa code.
+// ID nhóm → tên hiển thị (kiểm 12/11/2026 theo thành viên). Nhóm mới: thêm qua env
+// SALE_GROUPS='{"1234":"Tên nhóm"}' (tên phải là 1 trong CSKH / Live / Tư vấn / Sỉ).
+const SALE_GROUP_NAMES = (() => {
+  const base = { '3881': 'Live', '3882': 'Tư vấn', '4137': 'CSKH', '4356': 'Sỉ' };
+  try { return { ...base, ...JSON.parse(process.env.SALE_GROUPS || '{}') }; }
+  catch { console.error('SALE_GROUPS env không phải JSON hợp lệ — dùng mặc định'); return base; }
+})();
+const SALE_GROUP_LOOKBACK_DAYS = 180;   // quét NV có đơn trong ~6 tháng để biết nhóm
+const sgCache = new Map();              // shopId_from -> { at, data }
+
+// → { byId: {userId: team|null}, byName: {normName: team|null}, counts: {team: n}, unknownGroups: [...] }
+async function fetchSaleGroupMap(posToken, shopId, fromStr) {
+  const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+  let from = today;
+  for (let i = 0; i < SALE_GROUP_LOOKBACK_DAYS; i++) from = prevDay(from);
+  if (fromStr && fromStr < from) from = fromStr;           // xem kỳ cũ hơn → quét lùi tới đó
+  const key = `${shopId}_${from}`;
+  const c = sgCache.get(key);
+  if (c && Date.now() - c.at < 15 * 60000) return c.data;  // 15 phút
+  const { since, until } = posBounds(from, today);
   const url = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
   const body = { params: {
     success_status: '1', success_record: 'inserted_at', returned_record: 'success_record',
     returned_status: '5', user_type: 'assign', filter: {}, since, until,
+    split_by: ['User.sale_group', 'User.id'], select_fields: ['order_count'] } };
+  const res = await pcFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+  if (!res.ok) throw new Error(`sale_group HTTP ${res.status}`);
+  const j = await res.json();
+  const rows = (j?.data?.[0]?.data) || j?.data || [];
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('sale_group: Pancake trả rỗng');
+  const byId = {}, byName = {}, counts = {}, unknown = new Set();
+  for (const r of rows) {
+    const uid = r['User.id'];
+    if (!uid) continue;
+    const gid = r['User.sale_group'] == null ? null : String(r['User.sale_group']);
+    let team = null;
+    if (gid) {
+      team = SALE_GROUP_NAMES[gid] || null;
+      if (!team) unknown.add(gid);
+    }
+    byId[uid] = team;
+    const nm = normViName(r.user && r.user.name);
+    if (nm) byName[nm] = team;
+    if (team) counts[team] = (counts[team] || 0) + 1;
+  }
+  if (unknown.size) console.warn('Nhóm sale Pancake chưa có tên (thêm vào SALE_GROUPS):', [...unknown].join(', '));
+  const data = { byId, byName, counts, unknownGroups: [...unknown], from, to: today };
+  sgCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
+// Gắn `team` cho từng dòng NV: theo User.id, rồi theo tên. Không thấy trên Pancake
+// → để trống, frontend dùng danh sách tên dự phòng.
+function tagTeams(rows, sg, idKey) {
+  if (!sg || !Array.isArray(rows)) return;
+  for (const r of rows) {
+    const id = r[idKey];
+    if (id && Object.prototype.hasOwnProperty.call(sg.byId, id)) { r.team = sg.byId[id] || 'Khác'; continue; }
+    const nm = normViName(r.name);
+    if (nm && Object.prototype.hasOwnProperty.call(sg.byName, nm)) r.team = sg.byName[nm] || 'Khác';
+  }
+}
+
+function groupIdsOf(teamName) {
+  return Object.entries(SALE_GROUP_NAMES).filter(([, t]) => t === teamName).map(([id]) => Number(id));
+}
+
+// Doanh thu/LN/đơn Nhóm Live theo từng ngày: { 'YYYY-MM-DD': {doanhThu,loiNhuan,donChot} }
+async function fetchLiveTeamRevByDay(posToken, shopId, from, to, liveNormSet) {
+  const { since, until } = posBounds(from, to);
+  const url = `${POS_BASE}/shops/${shopId}/analytics/sale?${posAuthQS(posToken)}`;
+  // Nhóm Live = nhóm sale "Live" trên Pancake (lọc thẳng như màn Tổng quan).
+  // Chỉ khi chưa có ID nhóm mới quay về lọc theo danh sách tên.
+  const liveGroupIds = groupIdsOf('Live');
+  if (liveGroupIds.length) liveNormSet = new Set();
+  const body = { params: {
+    success_status: '1', success_record: 'inserted_at', returned_record: 'success_record',
+    returned_status: '5', user_type: 'assign',
+    filter: liveGroupIds.length ? { 'User.sale_group': liveGroupIds } : {}, since, until,
     split_by: ['User.id', 'Time.day'], select_fields: POS_BRK_FIELDS } };
   const res = await pcFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
@@ -1061,11 +1140,28 @@ app.post('/api/metrics', requireAuth, async (req, res) => {
       return null;
     });
 
-    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend, messAdSpend] =
-      await Promise.all([engP, userP, posP, ovP, brkP, adP, liveAdP, messP]);
+    // Nhóm sale hiện tại của từng NV — lấy từ Pancake (thay danh sách tên gõ tay)
+    const sgP = shopId
+      ? fetchSaleGroupMap(chatToken, shopId, fromStr).catch(e => {
+          console.error('Sale groups:', e.message);
+          return null;
+        })
+      : Promise.resolve(null);
+
+    const [engRes, userStats, posRes, posOv, posBrk, adSpend, liveDaiAdSpend, messAdSpend, saleGroups] =
+      await Promise.all([engP, userP, posP, ovP, brkP, adP, liveAdP, messP, sgP]);
     const out = buildMetrics(engRes, posRes, userStats);
     out.posOverview = buildPosOverview(posOv);
     out.posBreakdowns = buildPosBreakdowns(posBrk);
+    if (saleGroups) {
+      tagTeams(out.posBreakdowns && out.posBreakdowns.staff, saleGroups, 'key');
+      tagTeams(out.staff, saleGroups, 'user_id');
+      tagTeams(out.staffDetail, saleGroups, 'user_id');
+      out.saleGroups = { source: 'pancake', counts: saleGroups.counts,
+        unknownGroups: saleGroups.unknownGroups, range: [saleGroups.from, saleGroups.to] };
+    } else {
+      out.saleGroups = { source: 'fallback' };
+    }
     out.adSpend = adSpend;
     out.liveDaiAdSpend = liveDaiAdSpend;
     out.messAdSpend = messAdSpend;

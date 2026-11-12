@@ -906,16 +906,19 @@ function renderBreakdowns(b) {
     <td>${money(r.gttb)}</td></tr>`).join('');
 }
 
-// ─── Dashboard con theo nhóm sale (CSKH / Live / Tư vấn) ───
+// ─── Dashboard con theo nhóm sale (CSKH / Live / Tư vấn / Sỉ) ───
+// NGUỒN CHÍNH: server gắn `team` cho từng NV theo NHÓM SALE TRÊN PANCAKE (User.sale_group)
+// → thêm/bớt/chuyển nhóm NV ngay trên Pancake là dashboard tự theo.
+// TEAM_DEFS dưới đây CHỈ là dự phòng cho NV Pancake không trả nhóm (chưa có đơn nào /
+// lỗi gọi nhóm). Danh sách khớp nhóm Pancake ngày 12/11/2026.
 const TEAM_DEFS = [
-  ['CSKH', '#f87272', ['Nguyễn Thị Phong Lan','Xuân Mai','Minh Chau','Phương Trịnh','Thuý Hằng',
-    'Pham Nguyen Mai Chi','nguyen','Hồng Hồng','Pu Phạm','Nguyễn Mi']],
-  ['Live', '#36d399', ['Nguyễn Minh Thu','Nhã Yến','My Trịnh','Khánh Duyên','Lê Thị Kim Ngân']],
-  ['Tư vấn', '#f6c344', ['Phạm Quỳnh Anh','Dii Dii','Lê Phương','Hoàng Thanh Thủy','Bùi Phương Thảo Mi',
-    'Phan Yến Thư','Bùi Hịu','Chi Thái','Thùy Dương','Mei Mei','Ngọ Thu','Tuyet Nguyen',
-    'Phạm Ngọc Phương Quỳnh','Ánh Nguyệt','Huỳnh Như','Linh Nguyen','Bùi Thanhh Lamm',
-    'Võ Thị Mỹ Diệu','Đào Ngọc An Tuệ','Le Ngoc Truc Ly','Duyênn Kỳ','Thu My','Minh Thu',
-    'Khánh Linn','Huỳnh My']],
+  ['CSKH', '#f87272', ['Phương Trịnh','Pham Nguyen Mai Chi','Thuý Hằng','Bảo Ngân','Xuân Mai',
+    'Hồng Hồng','Minh Chau','Anh Quyen Huynh','Nguyễn Mi']],
+  ['Live', '#36d399', ['Nguyễn Minh Thu','Lê Thị Kim Ngân','Khánh Duyên','Kim Uyên','Nhã Yến']],
+  ['Tư vấn', '#f6c344', ['Phạm Quỳnh Anh','Hoàng Thanh Thủy','Dii Dii','Lê Phương','Bùi Phương Thảo Mi',
+    'Khánh Linn','Bùi Hịu','Thùy Dương','Mei Mei','Phan Yến Thư','Yến Thư Phan','Ánh Nguyệt Trần',
+    'Ánh Nguyệt','Minh Thu','Minh Nguyệt','Bùi Thanhh Lamm','Bùii Thanhh Lamm','Huỳnh Như',
+    'Linh Nguyen','Huỳnh My']],
   ['Sỉ', '#a78bfa', ['Thùy Linh b2b']],
 ];
 const TEAM_ORDER = ['CSKH','Live','Tư vấn','Sỉ','Khác'];
@@ -929,9 +932,13 @@ const NAME2TEAM = (() => {
   for (const [team,,names] of TEAM_DEFS) for (const n of names) m.set(normName(n), team);
   return m;
 })();
-const TEAM_COUNT = Object.fromEntries(TEAM_DEFS.map(([t,,n]) => [t, n.length]));
-// Cả 3 nhóm đều là danh sách cố định theo cấu hình Pancake; ai chưa gán nhóm → "Khác".
-function teamOf(name) { return NAME2TEAM.get(normName(name)) || 'Khác'; }
+const TEAM_COUNT_FALLBACK = Object.fromEntries(TEAM_DEFS.map(([t,,n]) => [t, n.length]));
+// Ưu tiên nhóm Pancake (row.team do server gắn); không có mới tra danh sách tên dự phòng.
+// NV đã bị gỡ khỏi nhóm trên Pancake → server gắn 'Khác' → không tính vào nhóm nào.
+function teamOf(name, team) {
+  if (team) return TEAM_ORDER.includes(team) ? team : 'Khác';
+  return NAME2TEAM.get(normName(name)) || 'Khác';
+}
 
 function buildTeams(j) {
   const T = {};
@@ -946,7 +953,7 @@ function buildTeams(j) {
   };
   // POS metrics (nguồn chính xác cho doanh thu / đơn)
   for (const r of ((j.posBreakdowns && j.posBreakdowns.staff) || [])) {
-    const tb = T[teamOf(r.name)], m = mem(tb, r.name);
+    const tb = T[teamOf(r.name, r.team)], m = mem(tb, r.name);
     tb.doanhThu += r.doanhThu; tb.doanhSo += r.doanhSo; tb.loiNhuan += r.loiNhuan;
     tb.chietKhau += r.chietKhau; tb.donChot += r.donChot; tb.slBan += r.slBan;
     tb.totalOrder += r.totalOrder; tb.returnedQty += r.returnedQty || 0;
@@ -956,9 +963,9 @@ function buildTeams(j) {
     m.doanhThu += r.doanhThu; m.donChot += r.donChot; m.totalOrder += r.totalOrder; m.loiNhuan += r.loiNhuan;
   }
   // Tương tác (chat)
-  for (const s of (j.staff || [])) { const tb = T[teamOf(s.name)]; tb.tuongTac += s.total||0; mem(tb, s.name).tuongTac += s.total||0; }
+  for (const s of (j.staff || [])) { const tb = T[teamOf(s.name, s.team)]; tb.tuongTac += s.total||0; mem(tb, s.name).tuongTac += s.total||0; }
   // SĐT mang về (chat detail)
-  for (const d of (j.staffDetail || [])) { const tb = T[teamOf(d.name)]; tb.sdt += d.phone||0; mem(tb, d.name).sdt += d.phone||0; }
+  for (const d of (j.staffDetail || [])) { const tb = T[teamOf(d.name, d.team)]; tb.sdt += d.phone||0; mem(tb, d.name).sdt += d.phone||0; }
   return TEAM_ORDER.map(t => T[t]);
 }
 
@@ -977,7 +984,8 @@ function renderTeams(j) {
     const gttb = t.donChot > 0 ? t.doanhThu / t.donChot : 0;
     const tyLe = t.totalOrder > 0 ? (t.donChot / t.totalOrder) * 100 : 0;
     const lnPct = t.doanhThu > 0 ? (t.loiNhuan / t.doanhThu) * 100 : 0;
-    const total = Math.max(TEAM_COUNT[t.team] || 0, t.members.size);
+    const sgCounts = (j.saleGroups && j.saleGroups.source === 'pancake') ? (j.saleGroups.counts || {}) : TEAM_COUNT_FALLBACK;
+    const total = Math.max(sgCounts[t.team] || 0, t.members.size);
     const active = [...t.members.values()].filter(m => m.doanhThu || m.donChot || m.tuongTac || m.sdt).length;
 
     // Ads theo nhóm: Live → Live Đại (lệch +1 ngày); Tư vấn → Mess (cùng kỳ). LN sau ads = LN − ads.
